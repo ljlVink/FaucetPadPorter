@@ -1,0 +1,7 @@
+    .locals 10
+    invoke-virtual {p0}, Lcom/android/wm/shell/miuifreeform/MiuiInfinityModeTaskRepository;->isEnableGamehidegesture()Z
+    move-result v8
+    if-eqz v8, :cond_1a
+    const/4 v9, 0x0
+    return-object v9
+    :cond_1a
