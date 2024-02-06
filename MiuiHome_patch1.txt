@@ -9,11 +9,11 @@
 
     move-result-object p0
 
-    const-string v0, "screen_game_mode"
+    const-string v0, "gb_boosting"
 
     const/4 v1, 0x0
 
-    invoke-static {p0, v0, v1}, Landroid/provider/Settings$System;->getInt(Landroid/content/ContentResolver;Ljava/lang/String;I)I
+    invoke-static {p0, v0, v1}, Landroid/provider/Settings$Secure;->getInt(Landroid/content/ContentResolver;Ljava/lang/String;I)I
 
     move-result p0
 
