@@ -30,6 +30,8 @@ var current_stage int
 var base_device_id string 
 var port_device_id string
 var base_density_v2_prop string
+var Wg sync.WaitGroup
+
 type Permissions struct {
 	XMLName xml.Name             `xml:"permissions"`
 	PrivApp []PrivAppPermissions `xml:"privapp-permissions"`
@@ -70,7 +72,8 @@ func payloaddump(filename string, dumppath string) error {
 	if err != nil {
 		return err
 	}
-	return nil
+	err=utils.DeleteFile(payloadPath)
+	return err
 }
 //注意：dest是目录名
 func UnzipPayloadbin(pkg string, dest string, filename string, rename string) error {
@@ -218,6 +221,7 @@ func stage1_unzip() {
 }
 
 func stage2_unpayload() {
+
 	fmt.Println("stage 2: unpack payload.bin")
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -236,20 +240,25 @@ func stage2_unpayload() {
 }
 func stage3_unparse(){
 	fmt.Println("stage 3: unparse images of super (base port) (system system_ext product mi_ext)")
+	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath,"tmp","port_images","config"))
+	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath,"tmp","base_images","config"))
 	parts := []string{"system", "system_ext", "product","mi_ext" }
 	extract_all_images(parts)
 }
 func stage4_modify_prop_config(){
+	defer Wg.Done()
 	fmt.Println("stage 4: read configs and modify")
 	base_product_prop:=filepath.Join(Tmppath,"base_images","product","etc","build.prop")
 	base_device_id,err =getAndroidPropValue(base_product_prop,"ro.product.product.name")
 	checkerr(err)
 	port_product_prop:=filepath.Join(Tmppath,"port_images","product","etc","build.prop")
+	port_miext_prop:=filepath.Join(Tmppath,"port_images","mi_ext","etc","build.prop")
+	port_system_prop:=filepath.Join(Tmppath,"port_images","system","system","build.prop")
 	port_device_id,err =getAndroidPropValue(port_product_prop,"ro.product.product.name")
 	checkerr(err)
 	fmt.Println("base_device id:",base_device_id)
 	fmt.Println("base_device id:",port_device_id)
-	port_miext_prop:=filepath.Join(Tmppath,"port_images","mi_ext","etc","build.prop")
+	
 	fmt.Println("mod:",port_miext_prop)
 	err=updateAndroidPropValue(port_miext_prop,"ro.product.mod_device",base_device_id)
 	checkerr(err)
@@ -270,8 +279,11 @@ func stage4_modify_prop_config(){
 	checkerr(err)
 	err=updateAndroidPropValue(port_product_prop,"persist.sys.background_blur_version","2")
 	checkerr(err)
+	err=updateAndroidPropValue(port_system_prop,"ro.miui.has_gmscore","1")
+	checkerr(err)
 }
 func stage5_modify_overlay_config(){
+	defer Wg.Done()
 	fmt.Println("stage 5: modify AospFrameworkResOverlay MiuiFrameworkResOverlay DevicesAndroidOverlay")
 	base_aosp_overlay := filepath.Join(Tmppath,"base_images","product","overlay","AospFrameworkResOverlay.apk")
 	port_aosp_overlay := filepath.Join(Tmppath,"port_images","product","overlay","AospFrameworkResOverlay.apk")
@@ -291,6 +303,7 @@ func stage5_modify_overlay_config(){
 	checkerr(err)
 }
 func stage6_modify_displayconfig(){
+	defer Wg.Done()
 	fmt.Println("stage 6: replace media and displayid folder")
 	base_media := filepath.Join(Tmppath,"base_images","product","media")
 	port_media := filepath.Join(Tmppath,"port_images","product","media")
@@ -302,6 +315,7 @@ func stage6_modify_displayconfig(){
 	checkerr(err)
 }
 func stage7_change_device_features(){
+	defer Wg.Done()
 	fmt.Println("stage 7: change device_features")
 	base_feature := filepath.Join(Tmppath,"base_images","product","etc","device_features")
 	port_feature := filepath.Join(Tmppath,"port_images","product","etc","device_features")
@@ -309,6 +323,7 @@ func stage7_change_device_features(){
 	checkerr(err)
 }
 func stage8_modify_camera(){
+	defer Wg.Done()
 	fmt.Println("stage 8: modify Camera")
 	base_cam := filepath.Join(Tmppath,"base_images","product","priv-app","MiuiCamera")
 	port_cam_orig := filepath.Join(Tmppath,"port_images","product","priv-app","MiuiCamera")
@@ -319,17 +334,19 @@ func stage8_modify_camera(){
 	checkerr(err)
 }
 func stage9_add_autoui_adaption(){
+	defer Wg.Done()
 	fmt.Println("stage 9: add autoui adaption")
 	base_autoui := filepath.Join(Tmppath,"base_images","product","etc","autoui_list.xml")
 	port_autoui := filepath.Join(Tmppath,"port_images","product","etc","autoui_list.xml")
 	//port_autoui_folder := filepath.Join(Tmppath,"port_images","product","etc")
-	if utils.FileExists(base_autoui)||!utils.FileExists(port_autoui){
+	if utils.FileExists(base_autoui)&&!utils.FileExists(port_autoui){
 		fmt.Println("found autoui_list.xml and port file don't have")
 		err=utils.CopyFile(base_autoui,port_autoui)
 		checkerr(err)
 	}
 }
 func stage10_downgrade_mslgrdp(){
+	defer Wg.Done()
 	fmt.Println("stage 10: (Temp) Downgrade MSLG app")
 	port_mslgrdp_folder := filepath.Join(Tmppath,"port_images","product","app","MSLgRdp")
 	base_mslgrdp_folder := filepath.Join(Tmppath,"base_images","product","app","MSLgRdp")
@@ -340,6 +357,7 @@ func stage10_downgrade_mslgrdp(){
 	}
 }
 func stage11_unlock_freeform_settings(){
+	defer Wg.Done()
 	fmt.Println("stage 11: Unlock freeform settings")
 	var apk smaliengine.Apkfile
 	apk.Apkpath=filepath.Join(Tmppath,"port_images","system_ext","framework","miui-services.jar")
@@ -350,16 +368,18 @@ func stage11_unlock_freeform_settings(){
 	smaliengine.RepackApk(apk)
 }
 func stage12_settings_unlock_content_extension(){
+	defer Wg.Done()
 	fmt.Println("stage 12: Unlock Content Extension(Settings)")
 	var apk smaliengine.Apkfile
 	apk.Apkpath=filepath.Join(Tmppath,"port_images","system_ext","priv-app","Settings","Settings.apk")
 	apk.Pkgname="Settings"
 	apk.Execpath=Execpath
 	smaliengine.PatchApk_Return_Boolean(apk,"com.android.settings.utils.SettingsFeatures","isNeedRemoveContentExtension",false)
+	smaliengine.PatchApk_Return_Boolean(apk,"com.android.settings.utils.SettingsFeatures","shouldShowAutoUIModeSetting",true)
 	smaliengine.RepackApk(apk)
-
 }
 func stage13_patch_systemUI(){
+	defer Wg.Done()
 	fmt.Println("stage 13: Patch systemUI")
 	var apk smaliengine.Apkfile
 	apk.Apkpath=filepath.Join(Tmppath,"port_images","system_ext","priv-app","MiuiSystemUI","MiuiSystemUI.apk")
@@ -374,6 +394,7 @@ func stage13_patch_systemUI(){
 	smaliengine.RepackApk(apk)
 }
 func stage14_fix_content_extension(){
+	defer Wg.Done()
 	fmt.Println("stage 14: fix content extentension (file)")
 	xmlFilePath:=filepath.Join(Tmppath,"port_images","product","etc","permissions","privapp-permissions-product.xml")
 	file, err := os.Open(xmlFilePath)
@@ -413,6 +434,7 @@ func stage14_fix_content_extension(){
 	utils.CopyFile(filepath.Join(Execpath,"MIUIContentExtension.apk"),filepath.Join(Tmppath,"port_images","product","priv-app","MIUIContentExtension","MIUIContentExtension.apk"))
 }
 func stage15_downgrade_privapp_verification(){
+	defer Wg.Done()
 	fmt.Println("stage 15:downgrade priv-app verification")
 	var apk smaliengine.Apkfile
 	apk.Apkpath=filepath.Join(Tmppath,"port_images","system","system","framework","services.jar")
@@ -445,6 +467,7 @@ func stage15_downgrade_privapp_verification(){
 	smaliengine.RepackApk(apk)
 }
 func stage16_patch_desktop(){
+	defer Wg.Done()
 	fmt.Println("stage 16:fix desktop")
 	var apk smaliengine.Apkfile
 	apk.Apkpath=filepath.Join(Tmppath,"port_images","product","priv-app","MiuiHome","MiuiHome.apk")
@@ -460,6 +483,7 @@ func stage16_patch_desktop(){
 	smaliengine.RepackApk(apk)
 }
 func stage17_copy_custsettings(){
+	defer Wg.Done()
 	fmt.Println("stage 17: move Cust Settings to product")
 	utils.CopyFile(filepath.Join(Execpath,"CustSettings.apk"),filepath.Join(Tmppath,"port_images","product","priv-app","CustSettings","CustSettings.apk"))
 }
@@ -472,7 +496,6 @@ func main() {
 	}
 	flag.StringVar(&basePkg, "base", "", "Original package (zip full ota package)")
 	flag.StringVar(&portPkg, "port", "", "Port package (zip full ota package)")
-	//flag.StringVar(&Execpath, "exec", "", "(Development Options)Point where is workpath")
 	flag.IntVar(&current_stage,"stage",0,"In which stage to start(If the program exited unexpectedly,-stage xxx)")
 	flag.Parse()
 	executable, _ := os.Executable()
@@ -481,9 +504,6 @@ func main() {
 	Tmppath = filepath.Join(Execpath,"tmp")
 	Imgextractorpath = filepath.Join(Execpath,"bin","imgextractor")
 	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath,"out"))
-	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath,"tmp","port_images","config"))
-	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath,"tmp","base_images","config"))
-	
 	if basePkg == "" || portPkg == "" {
 		ErrorAndExit("Base package or port package is null")
 	}
@@ -530,63 +550,26 @@ func main() {
 		current_stage++
 	}
 	if current_stage==4{
-		stage4_modify_prop_config()
-		current_stage++
-	}
-	if current_stage==5{
-		stage5_modify_overlay_config()
-		current_stage++
-	}
-	if current_stage==6{
-		stage6_modify_displayconfig()
-		current_stage++
-	}
-	if current_stage==7{
-		stage7_change_device_features()
-		current_stage++
-	}
-	if current_stage==8{
-		stage8_modify_camera()
-		current_stage++
-	}
-	if current_stage==9{
-		stage9_add_autoui_adaption()
-		current_stage++
-	}
-	if current_stage==10{
-		stage10_downgrade_mslgrdp()
-		current_stage++
-	}
-	if current_stage==11{
-		stage11_unlock_freeform_settings()
-		current_stage++
-	}
-	if current_stage==12{
-		stage12_settings_unlock_content_extension()
-		current_stage++
-	}
-	if current_stage==13{
-		stage13_patch_systemUI()
-		current_stage++
-	}
-	if current_stage==14{
-		stage14_fix_content_extension()
-		current_stage++
-	}
-	if current_stage==15{
-		stage15_downgrade_privapp_verification()
-		current_stage++
-	}
-	if current_stage==16{
-		stage16_patch_desktop()
-		current_stage++
-	}
-	if current_stage==17{
-		stage17_copy_custsettings()
+		Wg.Add(14)
+		go stage4_modify_prop_config()
+		go stage5_modify_overlay_config()
+		go stage6_modify_displayconfig()
+		go stage7_change_device_features()
+		go stage8_modify_camera()
+		go stage9_add_autoui_adaption()
+		go stage10_downgrade_mslgrdp()
+		go stage11_unlock_freeform_settings()
+		go stage12_settings_unlock_content_extension()
+		go stage13_patch_systemUI()
+		go stage14_fix_content_extension()
+		go stage15_downgrade_privapp_verification()
+		go stage16_patch_desktop()
+		go stage17_copy_custsettings()
+		Wg.Wait()
 		current_stage=99
 	}
 	if current_stage==99{
-		fmt.Println("stage ?:update FS config and Context and package (EROFS).")
+		fmt.Println("stage 99:update FS config and Context and package (EROFS).")
 		parts := []string{"system","system_ext","product","mi_ext"}
 		package_img(parts)
 	}
