@@ -255,7 +255,6 @@ func stage4_modify_prop_config() {
 	checkerr(err)
 	port_product_prop := filepath.Join(Tmppath, "port_images", "product", "etc", "build.prop")
 	port_miext_prop := filepath.Join(Tmppath, "port_images", "mi_ext", "etc", "build.prop")
-	port_system_prop := filepath.Join(Tmppath, "port_images", "system", "system", "build.prop")
 	port_device_id, err = getAndroidPropValue(port_product_prop, "ro.product.product.name")
 	checkerr(err)
 	fmt.Println("base_device id:", base_device_id)
@@ -280,8 +279,6 @@ func stage4_modify_prop_config() {
 	err = updateAndroidPropValue(port_product_prop, "persist.sys.background_blur_supported", "true")
 	checkerr(err)
 	err = updateAndroidPropValue(port_product_prop, "persist.sys.background_blur_version", "2")
-	checkerr(err)
-	err = updateAndroidPropValue(port_system_prop, "ro.miui.has_gmscore", "1")
 	checkerr(err)
 }
 func stage5_modify_overlay_config() {
@@ -380,6 +377,11 @@ func stage12_settings_unlock_content_extension() {
 	apk.Execpath = Execpath
 	smaliengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "isNeedRemoveContentExtension", false)
 	smaliengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "shouldShowAutoUIModeSetting", true)
+	smaliengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "showHighRefreshPreference", true)
+	lines,err:=utils.ReadLinesFromFile(filepath.Join(Execpath,"Settings_patch1.txt"))
+	checkerr(err)
+	//设置statusbar图标数量
+	smaliengine.PatchApk_Return_and_patch_line(apk,"com.android.settings.NotificationStatusBarSettings","setupShowNotificationIconCount",lines)
 	smaliengine.RepackApk(apk)
 }
 func stage13_patch_systemUI() {
@@ -493,7 +495,31 @@ func stage17_copy_custsettings() {
 	fmt.Println("stage 17: move Cust Settings to product")
 	utils.CopyFile(filepath.Join(Execpath, "CustSettings.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "CustSettings", "CustSettings.apk"))
 }
-
+func stage18_powerkeeper_maxfps() {
+	defer Wg.Done()
+	fmt.Println("stage 18: disable screen code receive")
+	var apk smaliengine.Apkfile
+	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system","system", "app", "PowerKeeper", "PowerKeeper.apk")
+	apk.Pkgname = "PowerKeeper"
+	apk.Execpath = Execpath
+	smaliengine.PatchApk_Return_number(apk,"com.miui.powerkeeper.feedbackcontrol.ThermalManager","getDisplayCtrlCode",0)
+	smaliengine.RepackApk(apk)
+}
+func stage19_remove_useless_apps(){
+	defer Wg.Done()
+	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIUIDuokanReaderPad"))
+	checkerr(err)
+	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIpayPad_NO_NFC"))	
+	checkerr(err)
+	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIUIYoupin"))
+	checkerr(err)
+	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MiShop"))
+	checkerr(err)
+	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIUIGameCenterPad"))
+	checkerr(err)
+	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIUIEmail"))
+	checkerr(err)
+}
 // 2023-01-27
 func main() {
 	sysType = runtime.GOOS
@@ -542,6 +568,7 @@ func main() {
 			fmt.Println("delete tmp dictionary")
 			utils.DeleteDirectory(Tmppath)
 			utils.DeleteDirectory(Outpath)
+			utils.CreateDirectoryIfNotExists(Outpath)
 		}
 		current_stage++
 	}
@@ -559,7 +586,7 @@ func main() {
 		current_stage++
 	}
 	if current_stage == 4 {
-		Wg.Add(14)
+		Wg.Add(16)
 		go stage4_modify_prop_config()
 		go stage5_modify_overlay_config()
 		go stage6_modify_displayconfig()
@@ -574,8 +601,10 @@ func main() {
 		go stage15_downgrade_privapp_verification()
 		go stage16_patch_desktop()
 		go stage17_copy_custsettings()
+		go stage18_powerkeeper_maxfps()
+		go stage19_remove_useless_apps()
 		Wg.Wait()
-
+		current_stage=99
 	}
 
 	if current_stage == 99 {

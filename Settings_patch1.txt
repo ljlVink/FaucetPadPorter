@@ -1,0 +1,73 @@
+    .registers 6
+    const-string/jumbo v0, "show_notification_icon_count"
+    .line 290
+    invoke-virtual {p0, v0}, Landroidx/preference/PreferenceFragmentCompat;->findPreference(Ljava/lang/CharSequence;)Landroidx/preference/Preference;
+    move-result-object v0
+    check-cast v0, Lmiuix/preference/DropDownPreference;
+    iput-object v0, p0, Lcom/android/settings/NotificationStatusBarSettings;->mShowNotificationIconCount:Lmiuix/preference/DropDownPreference;
+    if-nez v0, :cond_e
+    return-void
+    .line 294
+    :cond_e
+    invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->getActivity()Landroidx/fragment/app/FragmentActivity;
+    move-result-object v0
+    invoke-static {v0}, Lcom/android/settings/utils/StatusBarUtils;->isMiuiOptimizationOff(Landroid/content/Context;)Z
+    move-result v0
+    if-eqz v0, :cond_23
+    .line 295
+    iget-object v0, p0, Lcom/android/settings/NotificationStatusBarSettings;->mStatusBarCategory:Landroidx/preference/PreferenceCategory;
+    iget-object v1, p0, Lcom/android/settings/NotificationStatusBarSettings;->mShowNotificationIconCount:Lmiuix/preference/DropDownPreference;
+    invoke-virtual {v0, v1}, Landroidx/preference/PreferenceGroup;->removePreference(Landroidx/preference/Preference;)Z
+    const/4 v0, 0x0
+    .line 296
+    iput-object v0, p0, Lcom/android/settings/NotificationStatusBarSettings;->mShowNotificationIconCount:Lmiuix/preference/DropDownPreference;
+    return-void
+    .line 299
+    :cond_23
+    invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->getResources()Landroid/content/res/Resources;
+    move-result-object v0
+    sget v1, Lcom/android/settings/R$array;->notification_icon_counts_entries:I
+    invoke-virtual {v0, v1}, Landroid/content/res/Resources;->getStringArray(I)[Ljava/lang/String;
+    move-result-object v0
+    iput-object v0, p0, Lcom/android/settings/NotificationStatusBarSettings;->mShowNotificationEntries:[Ljava/lang/String;
+    const/16 v0, 0xa
+    const/4 v1, 0x0
+    const/4 v2, 0x3
+    .line 300
+    filled-new-array {v1, v2, v0}, [I
+    move-result-object v0
+    .line 301
+    :goto_36
+    iget-object v2, p0, Lcom/android/settings/NotificationStatusBarSettings;->mShowNotificationEntries:[Ljava/lang/String;
+    array-length v3, v2
+    if-ge v1, v3, :cond_50
+    .line 302
+    aget-object v3, v2, v1
+    aget v4, v0, v1
+    invoke-static {v4}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
+    move-result-object v4
+    filled-new-array {v4}, [Ljava/lang/Object;
+    move-result-object v4
+    invoke-static {v3, v4}, Ljava/lang/String;->format(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;
+    move-result-object v3
+    aput-object v3, v2, v1
+    add-int/lit8 v1, v1, 0x1
+    goto :goto_36
+    .line 304
+    :cond_50
+    iget-object v0, p0, Lcom/android/settings/NotificationStatusBarSettings;->mShowNotificationIconCount:Lmiuix/preference/DropDownPreference;
+    invoke-virtual {v0, v2}, Lmiuix/preference/DropDownPreference;->setEntries([Ljava/lang/CharSequence;)V
+    .line 305
+    iget-object v0, p0, Lcom/android/settings/NotificationStatusBarSettings;->mShowNotificationIconCount:Lmiuix/preference/DropDownPreference;
+    invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->getResources()Landroid/content/res/Resources;
+    move-result-object v1
+    sget v2, Lcom/android/settings/R$array;->notification_icon_counts_values:I
+    invoke-virtual {v1, v2}, Landroid/content/res/Resources;->getStringArray(I)[Ljava/lang/String;
+    move-result-object v1
+    invoke-virtual {v0, v1}, Lmiuix/preference/DropDownPreference;->setEntryValues([Ljava/lang/CharSequence;)V
+    .line 307
+    iget-object v0, p0, Lcom/android/settings/NotificationStatusBarSettings;->mShowNotificationIconCount:Lmiuix/preference/DropDownPreference;
+    new-instance v1, Lcom/android/settings/NotificationStatusBarSettings$2;
+    invoke-direct {v1, p0}, Lcom/android/settings/NotificationStatusBarSettings$2;-><init>(Lcom/android/settings/NotificationStatusBarSettings;)V
+    invoke-virtual {v0, v1}, Landroidx/preference/Preference;->setOnPreferenceChangeListener(Landroidx/preference/Preference$OnPreferenceChangeListener;)V
+    return-void

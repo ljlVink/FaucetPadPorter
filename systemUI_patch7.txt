@@ -1,0 +1,6 @@
+    invoke-virtual {p0}, Lcom/android/wm/shell/miuimultiwinswitch/miuiwindowdecor/MiuiWindowDecorViewModel;->isHideLines()Z
+    move-result v0
+    const/4 v1, 0x1
+    if-eqz v0, :cond_8
+    return v1
+    :cond_8

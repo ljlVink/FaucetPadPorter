@@ -63,10 +63,7 @@ func CopyFile(srcPath, destPath string) error {
 }
 func DeleteDirectory(directoryPath string) error {
 	err := os.RemoveAll(directoryPath)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 func ReadLinesFromFile(filePath string) ([]string, error) {
 	file, err := os.Open(filePath)

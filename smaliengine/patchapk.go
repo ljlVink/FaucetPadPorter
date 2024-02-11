@@ -158,6 +158,9 @@ func Patch_before_funcstart(apk Apkfile,classname,funcname string,patch_file_pat
 
 	fmt.Println("get func line",lineNumber)
 	fmt.Println("should insert from",lineNumber+1)//跳过寄存器
+	if lineNumber<=10{
+		checkerr(fmt.Errorf("not found?"))
+	}
 	lines,err:=utils.ReadLinesFromFile(patch_file_path)
 	checkerr(err)
 	insertLinesAfter(class_name_path,lineNumber+1,lines,isNeedtoModifylocals)
