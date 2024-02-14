@@ -16,10 +16,12 @@ type Apkfile struct{
 	Pkgname string
 	Execpath string
 	Need_api_29 bool 
+	Use_apkeditor bool  //使用这个选项时一般需要处理resource的内容
 }
 func checkerr(err error) {
 	if err != nil {
 		fmt.Println(err)
+		utils.WriteTofile("APKPATCH_ERROR_LOG",err.Error())
 	}
 }
 func removeLines(filePath string, startLine, endLine int) error {
@@ -174,7 +176,6 @@ func PatchApk_Fix_init_vars(apk Apkfile,classname,pattern string,changeTo int){
 	f, err := os.Open(class_name_path)
 	checkerr(err)
 	defer f.Close()
-	//iput\s+(\w+),\s+(\w+),\s+Lcom/android/systemui/statusbar/phone/NotificationIconContainer;->mMaxStaticIcons:I
 	re := regexp.MustCompile(pattern)
 	re1 := regexp.MustCompile(`const/4`)
 	scanner := bufio.NewScanner(f)
@@ -195,12 +196,14 @@ func PatchApk_Fix_init_vars(apk Apkfile,classname,pattern string,changeTo int){
 	fmt.Println("class_name_path",class_name_path)
 	fmt.Println("const_4_line",const_4_line)
 	rep,err:=replaceConst4(intToHexadecimal(changeTo),const_4_line)
+	checkerr(err)
 	fmt.Println("fixed const_4_line",rep)
 	fmt.Println("last_const_v4_line:",last_const_v4_line)
 	fmt.Println("linenumber:",lineNumber)
 	err=removeLines(class_name_path,last_const_v4_line,last_const_v4_line)
 	checkerr(err)
 	err=insertLinesAfter(class_name_path,last_const_v4_line,[]string{rep},false)
+	checkerr(err)
 }
 func PatchApk_Return_and_patch_line(apk Apkfile,classname,funcname string,lines []string){
 	output_path,err:=DecompileApk(apk)
@@ -250,11 +253,22 @@ func RepackApk(apk Apkfile){
 	execpath:=apk.Execpath
 	apktoolpath:=filepath.Join(execpath,"bin","apktool")
 	apk_smali_path:=filepath.Join(execpath,"tmp","apkdec",apk.Pkgname)
+	if apk.Use_apkeditor{
+		err:=utils.RunCommand(apktoolpath,"java","-jar","./APKEditor-1.3.5.jar","b","-i",apk_smali_path,"-o",apk.Apkpath+".1") //写回 (apkeditor)
+		checkerr(err)
+		//对齐，否则apk会报错
+		err=utils.RunCommand(execpath,"zipalign","-p","-f","-v","4",apk.Apkpath+".1",apk.Apkpath)
+		checkerr(err)
+		utils.DeleteFile(apk.Apkpath+".1")
+		return
+	}
 	if !apk.Need_api_29{
+		//输出到xxx.apk.1,对齐之后再输出到源文件并删除,对于apk标签有need_api29的时候那玩意大概率是个系统框架的jar，不需要对齐
 		err:=utils.RunCommand(apktoolpath,"java","-jar","./apktool.jar","b",apk_smali_path,"-o",apk.Apkpath+".1","-c") //写回
 		if err!=nil{
 			panic(err)
 		}
+		//对齐，否则apk会报错
 		err=utils.RunCommand(execpath,"zipalign","-p","-f","-v","4",apk.Apkpath+".1",apk.Apkpath)
 		checkerr(err)
 		utils.DeleteFile(apk.Apkpath+".1")
@@ -262,48 +276,96 @@ func RepackApk(apk Apkfile){
 		err:=utils.RunCommand(apktoolpath,"java","-jar","./apktool.jar","b",apk_smali_path,"-o",apk.Apkpath,"-api","34") //写回
 		checkerr(err)
 	}
+
 }
+//类名，apk位置
 func Findfile_with_classname(classname,output_path string)(class_path_file string,err error){
-	class_path:=filepath.Join(output_path,"smali")
-	resultArray := strings.Split(classname, ".")
-	for _, str := range resultArray {
-		class_path=filepath.Join(class_path,str)
-	}
-	class_path+=".smali"
-	if(utils.FileExists(class_path)){
-		return class_path,nil
-	}else{
-		//可能存在smali_classes12345
-		for i := 1; ; i++ {
-			dexPath := fmt.Sprintf("smali_classes%d", i)
-			currentClassPath := filepath.Join(output_path, dexPath)
-			for _, str := range resultArray {
-				currentClassPath = filepath.Join(currentClassPath, str)
-			}
-	
-			currentClassPath += ".smali"
-			if utils.FileExists(currentClassPath) {
-				return currentClassPath, nil
-			}
-			nextDexPath := fmt.Sprintf("smali_classes%d", i+1)
-			nextDexPath = filepath.Join(output_path, nextDexPath)
-			if !utils.DirectoryExists(nextDexPath) {
-				break
-			}
+	if utils.FileExists(filepath.Join(output_path,"path-map.json")){
+		//使用了apkeditor解包
+		class_path:=filepath.Join(output_path,"smali","classes")
+		resultArray := strings.Split(classname, ".")
+		for _, str := range resultArray {
+			class_path=filepath.Join(class_path,str)
 		}
-		return "", fmt.Errorf("not found file for class %s", classname)
+		class_path+=".smali"
+		if utils.FileExists(class_path) {
+			return class_path,nil
+		}else{
+			//可能存在classes2345
+			for i := 2; ; i++ {
+				dexPath := fmt.Sprintf("classes%d", i)
+				currentClassPath := filepath.Join(output_path,"smali", dexPath)
+				for _, str := range resultArray {
+					currentClassPath = filepath.Join(currentClassPath, str)
+				}
+				currentClassPath += ".smali"
+				fmt.Println(currentClassPath)
+				if utils.FileExists(currentClassPath) {
+					return currentClassPath, nil
+				}
+				nextDexPath := fmt.Sprintf("classes%d", i+1)
+				nextDexPath = filepath.Join(output_path, nextDexPath)
+				if !utils.DirectoryExists(nextDexPath) {
+					break
+				}
+			}
+			return "", fmt.Errorf("(apkeditor)not found file for class %s", classname)
+		}
+	}else{
+		class_path:=filepath.Join(output_path,"smali")
+		resultArray := strings.Split(classname, ".")
+		for _, str := range resultArray {
+			class_path=filepath.Join(class_path,str)
+		}
+		class_path+=".smali"
+		if utils.FileExists(class_path) {
+			return class_path,nil
+		}else{
+			//可能存在smali_classes12345
+			for i := 1; ; i++ {
+				dexPath := fmt.Sprintf("smali_classes%d", i)
+				currentClassPath := filepath.Join(output_path, dexPath)
+				for _, str := range resultArray {
+					currentClassPath = filepath.Join(currentClassPath, str)
+				}
+		
+				currentClassPath += ".smali"
+				if utils.FileExists(currentClassPath) {
+					return currentClassPath, nil
+				}
+				nextDexPath := fmt.Sprintf("smali_classes%d", i+1)
+				nextDexPath = filepath.Join(output_path, nextDexPath)
+				if !utils.DirectoryExists(nextDexPath) {
+					break
+				}
+			}
+			return "", fmt.Errorf("not found file for class %s", classname)
+		
+		}
 	
 	}
 }
 func DecompileApk(apk Apkfile)(outputpath string,error error){
 	execpath:=apk.Execpath
-	apktoolpath:=filepath.Join(execpath,"bin","apktool")
-	pkgname:=apk.Pkgname
-	output_path:=filepath.Join(execpath,"tmp","apkdec",pkgname)
-	if utils.DirectoryExists(output_path){
-		return output_path,nil //already exists!
+	if !apk.Use_apkeditor{
+		apktoolpath:=filepath.Join(execpath,"bin","apktool")
+		pkgname:=apk.Pkgname
+		output_path:=filepath.Join(execpath,"tmp","apkdec",pkgname)
+		if utils.DirectoryExists(output_path){
+			return output_path,nil //already exists!
+		}
+		fmt.Println(apk.Apkpath)
+		err:=utils.RunCommand(apktoolpath,"java","-jar","./apktool.jar","-r","-f","d",apk.Apkpath,"-o",output_path)
+		return output_path,err
+	}else{
+		apktoolpath:=filepath.Join(execpath,"bin","apktool")
+		pkgname:=apk.Pkgname
+		output_path:=filepath.Join(execpath,"tmp","apkdec",pkgname)
+		if utils.DirectoryExists(output_path){
+			return output_path,nil //already exists!
+		}
+		fmt.Println(apk.Apkpath)
+		err:=utils.RunCommand(apktoolpath,"java","-jar","./APKEditor-1.3.5.jar","d","-i",apk.Apkpath,"-o",output_path)
+		return output_path,err
 	}
-	fmt.Println(apk.Apkpath)
-	err:=utils.RunCommand(apktoolpath,"java","-jar","./apktool.jar","-r","-f","d",apk.Apkpath,"-o",output_path)
-	return output_path,err
 }

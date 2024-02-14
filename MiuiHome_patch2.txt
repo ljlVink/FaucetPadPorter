@@ -1,6 +1,0 @@
-    .registers 8
-    invoke-virtual {p0}, Lcom/miui/home/recents/GestureInputHelper;->isEnableGamehidegesture()Z
-    move-result v0
-    if-eqz v0, :cond_a
-    return-void
-    :cond_a

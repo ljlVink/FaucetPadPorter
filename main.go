@@ -18,6 +18,10 @@ import (
 var sysType string
 var basePkg string
 var portPkg string
+var skip_thread_limit bool //跳过线程数量检查
+var primary_port bool      //	
+var init_debug bool        //开启包内debug
+
 var err error
 
 var Execpath string
@@ -374,11 +378,12 @@ func stage12_settings_unlock_content_extension() {
 	var apk smaliengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system_ext", "priv-app", "Settings", "Settings.apk")
 	apk.Pkgname = "Settings"
-	apk.Execpath = Execpath
+	apk.Execpath = Execpath	
+	apk.Use_apkeditor=true
 	smaliengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "isNeedRemoveContentExtension", false)
 	smaliengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "shouldShowAutoUIModeSetting", true)
 	smaliengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "showHighRefreshPreference", true)
-	lines,err:=utils.ReadLinesFromFile(filepath.Join(Execpath,"Settings_patch1.txt"))
+	lines,err:=utils.ReadLinesFromFile(filepath.Join(Execpath,"res","Settings_patch1.txt"))
 	checkerr(err)
 	//设置statusbar图标数量
 	smaliengine.PatchApk_Return_and_patch_line(apk,"com.android.settings.NotificationStatusBarSettings","setupShowNotificationIconCount",lines)
@@ -391,12 +396,12 @@ func stage13_patch_systemUI() {
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system_ext", "priv-app", "MiuiSystemUI", "MiuiSystemUI.apk")
 	apk.Pkgname = "MiuiSystemUI"
 	apk.Execpath = Execpath
-	smaliengine.Add_method_after(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", filepath.Join(Execpath, "systemUI_patch1.txt"))
-	smaliengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", "onDraw", filepath.Join(Execpath, "systemUI_patch2.txt"), false)
-	smaliengine.Add_method_after(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", filepath.Join(Execpath, "systemUI_patch4.txt"))
-	smaliengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", "findTopDraggableFullscreenTaskInfo", filepath.Join(Execpath, "systemUI_patch3.txt"), true)
-	smaliengine.Add_method_after(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", filepath.Join(Execpath, "systemUI_patch5.txt"))
-	smaliengine.Patch_before_funcstart(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", "onDraw", filepath.Join(Execpath, "systemUI_patch6.txt"), false)
+	smaliengine.Add_method_after(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", filepath.Join(Execpath,"res","systemUI_patch1.txt"))
+	smaliengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", "onDraw", filepath.Join(Execpath,"res", "systemUI_patch2.txt"), false)
+	smaliengine.Add_method_after(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", filepath.Join(Execpath,"res", "systemUI_patch4.txt"))
+	smaliengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", "findTopDraggableFullscreenTaskInfo", filepath.Join(Execpath,"res", "systemUI_patch3.txt"), true)
+	smaliengine.Add_method_after(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", filepath.Join(Execpath,"res", "systemUI_patch5.txt"))
+	smaliengine.Patch_before_funcstart(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", "onDraw", filepath.Join(Execpath,"res", "systemUI_patch6.txt"), false)
 	smaliengine.RepackApk(apk)
 }
 func stage14_fix_content_extension() {
@@ -439,7 +444,7 @@ func stage14_fix_content_extension() {
 	}
 	err = os.WriteFile(xmlFilePath, xmlBytes, 0644)
 	checkerr(err)
-	utils.CopyFile(filepath.Join(Execpath, "MIUIContentExtension.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "MIUIContentExtension", "MIUIContentExtension.apk"))
+	utils.CopyFile(filepath.Join(Execpath,"res","MIUIContentExtension.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "MIUIContentExtension", "MIUIContentExtension.apk"))
 }
 func stage15_downgrade_privapp_verification() {
 	defer Wg.Done()
@@ -450,7 +455,7 @@ func stage15_downgrade_privapp_verification() {
 	apk.Execpath = Execpath
 	outputpath, err := smaliengine.DecompileApk(apk)
 	checkerr(err)
-	err = utils.CopyFile(filepath.Join(Execpath, "signkill.smali"), filepath.Join(Tmppath, "apkdec", "services", "smali", "com", "android", "signkill.smali"))
+	err = utils.CopyFile(filepath.Join(Execpath,"res", "signkill.smali"), filepath.Join(Tmppath, "apkdec", "services", "smali", "com", "android", "signkill.smali"))
 	checkerr(err)
 	ParsingPackageUtils, err := smaliengine.Findfile_with_classname("com.android.server.pm.pkg.parsing.ParsingPackageUtils", outputpath)
 	checkerr(err)
@@ -486,14 +491,14 @@ func stage16_patch_desktop() {
 	smaliengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.DeviceConfig", "checkIsRecentsTaskSupportBlurV2", true)
 	smaliengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.common.BlurUtils", "isUseCompleteBlurOnDev", true)
 	smaliengine.PatchApk_Return_Boolean(apk, "com.miui.home.recents.DimLayer", "isSupportDim", true)
-	smaliengine.Add_method_after(apk, "com.miui.home.recents.GestureInputHelper", filepath.Join(Execpath, "MiuiHome_patch1.txt"))
-	smaliengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureInputHelper", "onTriggerGestureSuccess", filepath.Join(Execpath, "MiuiHome_patch2.txt"), true)
+	smaliengine.Add_method_after(apk, "com.miui.home.recents.GestureInputHelper", filepath.Join(Execpath, "res","MiuiHome_patch1.txt"))
+	smaliengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureInputHelper", "onTriggerGestureSuccess", filepath.Join(Execpath,"res", "MiuiHome_patch2.txt"), true)
 	smaliengine.RepackApk(apk)
 }
 func stage17_copy_custsettings() {
 	defer Wg.Done()
 	fmt.Println("stage 17: move Cust Settings to product")
-	utils.CopyFile(filepath.Join(Execpath, "CustSettings.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "CustSettings", "CustSettings.apk"))
+	utils.CopyFile(filepath.Join(Execpath, "res","CustSettings.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "CustSettings", "CustSettings.apk"))
 }
 func stage18_powerkeeper_maxfps() {
 	defer Wg.Done()
@@ -530,6 +535,9 @@ func main() {
 	flag.StringVar(&basePkg, "base", "", "Original package (zip full ota package)")
 	flag.StringVar(&portPkg, "port", "", "Port package (zip full ota package)")
 	flag.IntVar(&current_stage, "stage", 0, "In which stage to start(If the program exited unexpectedly,-stage xxx)")
+	flag.BoolVar(&skip_thread_limit,"skip_thread_limit",false,"skip program thread check")
+	flag.BoolVar(&primary_port,"primary",false,"Only primary port,and no new features will be added")
+	flag.BoolVar(&init_debug,"init_debug",false,"open init debug(dangerous!!),not yet implemented") 
 	flag.Parse()
 	executable, _ := os.Executable()
 	Execpath = filepath.Dir(executable)
@@ -547,7 +555,7 @@ func main() {
 	if !utils.FileExists(basePkg) || !utils.FileExists(portPkg) {
 		ErrorAndExit("Base package or port package not found")
 	}
-	if thread <= 8 {
+	if thread <= 8 && !skip_thread_limit{
 		ErrorAndExit("Too few CPU threads (<=8) , the program may cause problems")
 	}
 	fmt.Println("===========Welcome Faucet Pad OS Porter============")
@@ -557,6 +565,12 @@ func main() {
 	fmt.Println("basepkg=" + basePkg)
 	fmt.Println("portpkg=" + portPkg)
 	fmt.Println("Execpath=" + Execpath)
+	if skip_thread_limit && thread<=8{
+		fmt.Println("You have enabled the flag of skip_thread_limit and detected that the number of threads is too few.. the program may cause problems")
+	}
+	if init_debug{
+		fmt.Println("init_debug flag is enabled,do not share your package to others.")
+	}
 	if current_stage != 0 {
 		fmt.Printf("program will resume from stage:%d\n", current_stage)
 	}
@@ -573,6 +587,7 @@ func main() {
 		current_stage++
 	}
 	startTime := time.Now()
+
 	if current_stage == 1 {
 		stage1_unzip()
 		current_stage++
@@ -586,27 +601,43 @@ func main() {
 		current_stage++
 	}
 	if current_stage == 4 {
-		Wg.Add(16)
-		go stage4_modify_prop_config()
-		go stage5_modify_overlay_config()
-		go stage6_modify_displayconfig()
-		go stage7_change_device_features()
-		go stage8_modify_camera()
-		go stage9_add_autoui_adaption()
-		go stage10_downgrade_mslgrdp()
-		go stage11_unlock_freeform_settings()
-		go stage12_settings_unlock_content_extension()
-		go stage13_patch_systemUI()
-		go stage14_fix_content_extension()
-		go stage15_downgrade_privapp_verification()
-		go stage16_patch_desktop()
-		go stage17_copy_custsettings()
-		go stage18_powerkeeper_maxfps()
-		go stage19_remove_useless_apps()
-		Wg.Wait()
+		//仅做基础移植
+		if primary_port{
+			Wg.Add(7)
+			go stage4_modify_prop_config()
+			go stage5_modify_overlay_config()
+			go stage6_modify_displayconfig()
+			go stage7_change_device_features()
+			go stage8_modify_camera()
+			go stage9_add_autoui_adaption()
+			go stage10_downgrade_mslgrdp()
+			Wg.Wait()
+	
+		}else{
+			Wg.Add(16)
+			go stage4_modify_prop_config()
+			go stage5_modify_overlay_config()
+			go stage6_modify_displayconfig()
+			go stage7_change_device_features()
+			go stage8_modify_camera()
+			go stage9_add_autoui_adaption()
+			go stage10_downgrade_mslgrdp()
+			go stage11_unlock_freeform_settings()
+			go stage12_settings_unlock_content_extension()
+			go stage13_patch_systemUI()
+			go stage14_fix_content_extension()
+			go stage15_downgrade_privapp_verification()
+			go stage16_patch_desktop()
+			go stage17_copy_custsettings()
+			go stage18_powerkeeper_maxfps()
+			go stage19_remove_useless_apps()
+			Wg.Wait()	
+		}
 		current_stage=99
 	}
-
+	if current_stage==98{
+		fmt.Println("debug....")
+	}
 	if current_stage == 99 {
 		fmt.Println("stage 99:update FS config and Context and package (EROFS).")
 		parts := []string{"system","system_ext","product","mi_ext"}

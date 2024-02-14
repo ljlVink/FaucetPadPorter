@@ -1,5 +1,0 @@
-    invoke-virtual {p0}, Lcom/android/wm/shell/miuimultiwinswitch/miuiwindowdecor/MiuiDotView;->isHideDots()Z
-    move-result v0
-    if-eqz v0, :cond_7
-    return-void
-    :cond_7

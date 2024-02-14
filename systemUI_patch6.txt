@@ -1,6 +1,0 @@
-
-    invoke-virtual {p0}, Lcom/android/systemui/navigationbar/gestural/NavigationHandle;->isHideLines()Z
-    move-result v0
-    if-eqz v0, :cond_7
-    return-void
-    :cond_7
