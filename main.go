@@ -387,6 +387,7 @@ func stage12_settings_unlock_content_extension() {
 	checkerr(err)
 	//设置statusbar图标数量
 	apkengine.PatchApk_Return_and_patch_line(apk,"com.android.settings.NotificationStatusBarSettings","setupShowNotificationIconCount",lines)
+	apkengine.ModifyRes_stringArray(apk,filepath.Join("values","arrays.xml"),"notification_icon_counts_values",[]string{"0","3","10"})
 	apkengine.RepackApk(apk)
 }
 func stage13_patch_systemUI() {
@@ -526,7 +527,7 @@ func stage19_remove_useless_apps(){
 	checkerr(err)
 }
 // 2023-01-27
-func main() {
+func main() {	
 	sysType = runtime.GOOS
 	thread = runtime.NumCPU()
 	if sysType != "linux" && sysType != "windows" {
