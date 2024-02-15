@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/xml"
-	"faucetpadporter/smaliengine"
+	"faucetpadporter/apkengine"
 	"faucetpadporter/utils"
 	"flag"
 	"fmt"
@@ -364,45 +364,45 @@ func stage10_downgrade_mslgrdp() {
 func stage11_unlock_freeform_settings() {
 	defer Wg.Done()
 	fmt.Println("stage 11: Unlock freeform settings")
-	var apk smaliengine.Apkfile
+	var apk apkengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system_ext", "framework", "miui-services.jar")
 	apk.Pkgname = "miui_services"
 	apk.Execpath = Execpath
 	apk.Need_api_29 = true
-	smaliengine.PatchApk_Return_number(apk, "com.android.server.wm.MiuiFreeFormStackDisplayStrategy", "getMaxMiuiFreeFormStackCount", 256)
-	smaliengine.RepackApk(apk)
+	apkengine.PatchApk_Return_number(apk, "com.android.server.wm.MiuiFreeFormStackDisplayStrategy", "getMaxMiuiFreeFormStackCount", 256)
+	apkengine.RepackApk(apk)
 }
 func stage12_settings_unlock_content_extension() {
 	defer Wg.Done()
 	fmt.Println("stage 12: Unlock Content Extension(Settings)")
-	var apk smaliengine.Apkfile
+	var apk apkengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system_ext", "priv-app", "Settings", "Settings.apk")
 	apk.Pkgname = "Settings"
 	apk.Execpath = Execpath	
 	apk.Use_apkeditor=true
-	smaliengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "isNeedRemoveContentExtension", false)
-	smaliengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "shouldShowAutoUIModeSetting", true)
-	smaliengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "showHighRefreshPreference", true)
+	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "isNeedRemoveContentExtension", false)
+	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "shouldShowAutoUIModeSetting", true)
+	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "showHighRefreshPreference", true)
 	lines,err:=utils.ReadLinesFromFile(filepath.Join(Execpath,"res","Settings_patch1.txt"))
 	checkerr(err)
 	//设置statusbar图标数量
-	smaliengine.PatchApk_Return_and_patch_line(apk,"com.android.settings.NotificationStatusBarSettings","setupShowNotificationIconCount",lines)
-	smaliengine.RepackApk(apk)
+	apkengine.PatchApk_Return_and_patch_line(apk,"com.android.settings.NotificationStatusBarSettings","setupShowNotificationIconCount",lines)
+	apkengine.RepackApk(apk)
 }
 func stage13_patch_systemUI() {
 	defer Wg.Done()
 	fmt.Println("stage 13: Patch systemUI")
-	var apk smaliengine.Apkfile
+	var apk apkengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system_ext", "priv-app", "MiuiSystemUI", "MiuiSystemUI.apk")
 	apk.Pkgname = "MiuiSystemUI"
 	apk.Execpath = Execpath
-	smaliengine.Add_method_after(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", filepath.Join(Execpath,"res","systemUI_patch1.txt"))
-	smaliengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", "onDraw", filepath.Join(Execpath,"res", "systemUI_patch2.txt"), false)
-	smaliengine.Add_method_after(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", filepath.Join(Execpath,"res", "systemUI_patch4.txt"))
-	smaliengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", "findTopDraggableFullscreenTaskInfo", filepath.Join(Execpath,"res", "systemUI_patch3.txt"), true)
-	smaliengine.Add_method_after(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", filepath.Join(Execpath,"res", "systemUI_patch5.txt"))
-	smaliengine.Patch_before_funcstart(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", "onDraw", filepath.Join(Execpath,"res", "systemUI_patch6.txt"), false)
-	smaliengine.RepackApk(apk)
+	apkengine.Add_method_after(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", filepath.Join(Execpath,"res","systemUI_patch1.txt"))
+	apkengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", "onDraw", filepath.Join(Execpath,"res", "systemUI_patch2.txt"), false)
+	apkengine.Add_method_after(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", filepath.Join(Execpath,"res", "systemUI_patch4.txt"))
+	apkengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", "findTopDraggableFullscreenTaskInfo", filepath.Join(Execpath,"res", "systemUI_patch3.txt"), true)
+	apkengine.Add_method_after(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", filepath.Join(Execpath,"res", "systemUI_patch5.txt"))
+	apkengine.Patch_before_funcstart(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", "onDraw", filepath.Join(Execpath,"res", "systemUI_patch6.txt"), false)
+	apkengine.RepackApk(apk)
 }
 func stage14_fix_content_extension() {
 	defer Wg.Done()
@@ -449,24 +449,24 @@ func stage14_fix_content_extension() {
 func stage15_downgrade_privapp_verification() {
 	defer Wg.Done()
 	fmt.Println("stage 15:downgrade priv-app verification")
-	var apk smaliengine.Apkfile
+	var apk apkengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system", "system", "framework", "services.jar")
 	apk.Pkgname = "services"
 	apk.Execpath = Execpath
-	outputpath, err := smaliengine.DecompileApk(apk)
+	outputpath, err := apkengine.DecompileApk(apk)
 	checkerr(err)
 	err = utils.CopyFile(filepath.Join(Execpath,"res", "signkill.smali"), filepath.Join(Tmppath, "apkdec", "services", "smali", "com", "android", "signkill.smali"))
 	checkerr(err)
-	ParsingPackageUtils, err := smaliengine.Findfile_with_classname("com.android.server.pm.pkg.parsing.ParsingPackageUtils", outputpath)
+	ParsingPackageUtils, err := apkengine.Findfile_with_classname("com.android.server.pm.pkg.parsing.ParsingPackageUtils", outputpath)
 	checkerr(err)
 	fmt.Println("ParsingPackageUtils", ParsingPackageUtils)
-	ScanPackageUtils, err := smaliengine.Findfile_with_classname("com.android.server.pm.ScanPackageUtils", outputpath)
+	ScanPackageUtils, err := apkengine.Findfile_with_classname("com.android.server.pm.ScanPackageUtils", outputpath)
 	checkerr(err)
 	fmt.Println("ScanPackageUtils", ScanPackageUtils)
-	PackageSessionVerifier, err := smaliengine.Findfile_with_classname("com.android.server.pm.PackageSessionVerifier", outputpath)
+	PackageSessionVerifier, err := apkengine.Findfile_with_classname("com.android.server.pm.PackageSessionVerifier", outputpath)
 	checkerr(err)
 	fmt.Println("PackageSessionVerifier", PackageSessionVerifier)
-	ApexManager, err := smaliengine.Findfile_with_classname("com.android.server.pm.ApexManager$ApexManagerImpl", outputpath)
+	ApexManager, err := apkengine.Findfile_with_classname("com.android.server.pm.ApexManager$ApexManagerImpl", outputpath)
 	checkerr(err)
 	fmt.Println("ApexManager", ApexManager)
 	err = utils.ReplaceStringInFile(ParsingPackageUtils, "Landroid/util/apk/ApkSignatureVerifier;->getMinimumSignatureSchemeVersionForTargetSdk", "Lcom/android/signkill;->getMinimumSignatureSchemeVersionForTargetSdk")
@@ -477,23 +477,23 @@ func stage15_downgrade_privapp_verification() {
 	checkerr(err)
 	err = utils.ReplaceStringInFile(ApexManager, "Landroid/util/apk/ApkSignatureVerifier;->getMinimumSignatureSchemeVersionForTargetSdk", "Lcom/android/signkill;->getMinimumSignatureSchemeVersionForTargetSdk")
 	checkerr(err)
-	smaliengine.RepackApk(apk)
+	apkengine.RepackApk(apk)
 }
 func stage16_patch_desktop() {
 	defer Wg.Done()
 	fmt.Println("stage 16:fix desktop")
-	var apk smaliengine.Apkfile
+	var apk apkengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "product", "priv-app", "MiuiHome", "MiuiHome.apk")
 	apk.Pkgname = "MiuiHome"
 	apk.Execpath = Execpath
-	smaliengine.PatchApk_Return_number(apk, "com.miui.home.launcher.DeviceConfig", "calculateHotseatMaxCount", 100)
-	smaliengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.DeviceConfig", "checkHomeIsSupportHotSeatsBlur", true)
-	smaliengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.DeviceConfig", "checkIsRecentsTaskSupportBlurV2", true)
-	smaliengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.common.BlurUtils", "isUseCompleteBlurOnDev", true)
-	smaliengine.PatchApk_Return_Boolean(apk, "com.miui.home.recents.DimLayer", "isSupportDim", true)
-	smaliengine.Add_method_after(apk, "com.miui.home.recents.GestureInputHelper", filepath.Join(Execpath, "res","MiuiHome_patch1.txt"))
-	smaliengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureInputHelper", "onTriggerGestureSuccess", filepath.Join(Execpath,"res", "MiuiHome_patch2.txt"), true)
-	smaliengine.RepackApk(apk)
+	apkengine.PatchApk_Return_number(apk, "com.miui.home.launcher.DeviceConfig", "calculateHotseatMaxCount", 100)
+	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.DeviceConfig", "checkHomeIsSupportHotSeatsBlur", true)
+	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.DeviceConfig", "checkIsRecentsTaskSupportBlurV2", true)
+	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.common.BlurUtils", "isUseCompleteBlurOnDev", true)
+	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.recents.DimLayer", "isSupportDim", true)
+	apkengine.Add_method_after(apk, "com.miui.home.recents.GestureInputHelper", filepath.Join(Execpath, "res","MiuiHome_patch1.txt"))
+	apkengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureInputHelper", "onTriggerGestureSuccess", filepath.Join(Execpath,"res", "MiuiHome_patch2.txt"), true)
+	apkengine.RepackApk(apk)
 }
 func stage17_copy_custsettings() {
 	defer Wg.Done()
@@ -503,12 +503,12 @@ func stage17_copy_custsettings() {
 func stage18_powerkeeper_maxfps() {
 	defer Wg.Done()
 	fmt.Println("stage 18: disable screen code receive")
-	var apk smaliengine.Apkfile
+	var apk apkengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system","system", "app", "PowerKeeper", "PowerKeeper.apk")
 	apk.Pkgname = "PowerKeeper"
 	apk.Execpath = Execpath
-	smaliengine.PatchApk_Return_number(apk,"com.miui.powerkeeper.feedbackcontrol.ThermalManager","getDisplayCtrlCode",0)
-	smaliengine.RepackApk(apk)
+	apkengine.PatchApk_Return_number(apk,"com.miui.powerkeeper.feedbackcontrol.ThermalManager","getDisplayCtrlCode",0)
+	apkengine.RepackApk(apk)
 }
 func stage19_remove_useless_apps(){
 	defer Wg.Done()

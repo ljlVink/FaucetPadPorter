@@ -1,4 +1,4 @@
-package smaliengine
+package apkengine
 
 import (
 	"bufio"
