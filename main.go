@@ -207,6 +207,42 @@ func updateAndroidPropValue(propFile, propName, newValue string) error {
 	return writer.Flush()
 }
 
+func insertStringBeforeTag(filename, searchString, insertString string) error {
+    file, err := os.OpenFile(filename, os.O_RDWR, 0644)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
+    scanner := bufio.NewScanner(file)
+    var lines []string
+    var lineNumber int
+    for scanner.Scan() {
+        lines = append(lines, scanner.Text())
+        if scanner.Text() == searchString {
+            lineNumber = len(lines)
+        }
+    }
+    if err := scanner.Err(); err != nil {
+        return err
+    }
+    lines = append(lines[:lineNumber-1], append([]string{insertString}, lines[lineNumber-1:]...)...)
+    if _, err := file.Seek(0, 0); err != nil {
+        return err
+    }
+    if err := file.Truncate(0); err != nil {
+        return err
+    }
+    writer := bufio.NewWriter(file)
+    defer writer.Flush()
+    for _, line := range lines {
+        _, err := fmt.Fprintln(writer, line)
+        if err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
 func stage1_unzip() {
 	fmt.Println("stage 1: unzipping base pkg and port pkg")
 	var wg sync.WaitGroup
@@ -250,19 +286,26 @@ func stage3_unparse() {
 	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath, "tmp", "base_images", "config"))
 	parts := []string{"system", "system_ext", "product", "mi_ext"}
 	extract_all_images(parts)
+	base_product_prop := filepath.Join(Tmppath, "base_images", "product", "etc", "build.prop")
+	checkerr(err)
+	port_product_prop := filepath.Join(Tmppath, "port_images", "product", "etc", "build.prop")
+	checkerr(err)
+	base_device_id, err = getAndroidPropValue(base_product_prop, "ro.product.product.name")
+	checkerr(err)
+	port_device_id, err = getAndroidPropValue(port_product_prop, "ro.product.product.name")
+	checkerr(err)
+	fmt.Println("base_device id:", base_device_id)
+	fmt.Println("base_device id:", port_device_id)
+
 }
 func stage4_modify_prop_config() {
 	defer Wg.Done()
 	fmt.Println("stage 4: read configs and modify")
 	base_product_prop := filepath.Join(Tmppath, "base_images", "product", "etc", "build.prop")
-	base_device_id, err = getAndroidPropValue(base_product_prop, "ro.product.product.name")
 	checkerr(err)
 	port_product_prop := filepath.Join(Tmppath, "port_images", "product", "etc", "build.prop")
-	port_miext_prop := filepath.Join(Tmppath, "port_images", "mi_ext", "etc", "build.prop")
-	port_device_id, err = getAndroidPropValue(port_product_prop, "ro.product.product.name")
 	checkerr(err)
-	fmt.Println("base_device id:", base_device_id)
-	fmt.Println("base_device id:", port_device_id)
+	port_miext_prop := filepath.Join(Tmppath, "port_images", "mi_ext", "etc", "build.prop")
 
 	fmt.Println("mod:", port_miext_prop)
 	err = updateAndroidPropValue(port_miext_prop, "ro.product.mod_device", base_device_id)
@@ -324,6 +367,9 @@ func stage7_change_device_features() {
 	port_feature := filepath.Join(Tmppath, "port_images", "product", "etc", "device_features")
 	err = utils.ReplaceFolder(base_feature, port_feature)
 	checkerr(err)
+	//wild mode?
+	err=insertStringBeforeTag(filepath.Join(port_feature,base_device_id+".xml"),"</features>",`    <bool name="support_wild_boost">true</bool>`)
+	checkerr(err)
 }
 func stage8_modify_camera() {
 	defer Wg.Done()
@@ -379,15 +425,17 @@ func stage12_settings_unlock_content_extension() {
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system_ext", "priv-app", "Settings", "Settings.apk")
 	apk.Pkgname = "Settings"
 	apk.Execpath = Execpath	
-	apk.Use_apkeditor=true
 	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "isNeedRemoveContentExtension", false)
 	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "shouldShowAutoUIModeSetting", true)
 	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "showHighRefreshPreference", true)
+	//设置statusbar图标数量
+	/*
+	填坑:使用apkeditor可能会导致签名炸/??未知错误，待解决
 	lines,err:=utils.ReadLinesFromFile(filepath.Join(Execpath,"res","Settings_patch1.txt"))
 	checkerr(err)
-	//设置statusbar图标数量
 	apkengine.PatchApk_Return_and_patch_line(apk,"com.android.settings.NotificationStatusBarSettings","setupShowNotificationIconCount",lines)
 	apkengine.ModifyRes_stringArray(apk,filepath.Join("values","arrays.xml"),"notification_icon_counts_values",[]string{"0","3","10"})
+	*/
 	apkengine.RepackApk(apk)
 }
 func stage13_patch_systemUI() {
