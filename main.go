@@ -19,8 +19,9 @@ var sysType string
 var basePkg string
 var portPkg string
 var skip_thread_limit bool //跳过线程数量检查
-var primary_port bool      //	
+var primary_port bool      //基本移植
 var init_debug bool        //开启包内debug
+var dec_mode bool          //整包apk逆向模式
 
 var err error
 
@@ -49,6 +50,10 @@ type PrivAppPermissions struct {
 
 type Permission struct {
 	Name string `xml:"name,attr"`
+}
+type APKInfo struct {
+	Name string
+	Path string
 }
 
 func ErrorAndExit(msg string) {
@@ -109,13 +114,17 @@ func extractimg(imgpath, outputpath string) {
 func extract_all_images(parts []string) {
 	var wg sync.WaitGroup
 	for _, part := range parts {
-		wg.Add(2)
+		wg.Add(1)
 		go func(p string) {
 			defer wg.Done()
 			imgpath := filepath.Join(Tmppath, "base_payload", p+".img")
 			outputpath := filepath.Join(Tmppath, "base_images")
 			extractimg(imgpath, outputpath)
 		}(part)
+		if dec_mode {
+			continue
+		}
+		wg.Add(1)
 		go func(p string) {
 			defer wg.Done()
 			imgpath := filepath.Join(Tmppath, "port_payload", p+".img")
@@ -125,17 +134,29 @@ func extract_all_images(parts []string) {
 	}
 	wg.Wait()
 }
-func package_img(parts []string) {
+// 考虑到未来重新打包可能存在重打包base的情况，true为打包port，false为打包base
+func package_img(parts []string, base_or_port bool) {
 	var wg sync.WaitGroup
 	for _, imgname := range parts {
 		wg.Add(1)
 		go func(imgname string) {
 			defer wg.Done()
-			imgpath := filepath.Join(Tmppath, "port_images", imgname)
-			fsconfig_path := filepath.Join(Tmppath, "port_images", "config", imgname+"_fs_config")
-			context_config_path := filepath.Join(Tmppath, "port_images", "config", imgname+"_file_contexts")
-			fmt.Println(imgpath)
-			fmt.Println(fsconfig_path)
+			var imgpath string
+			var fsconfig_path string
+			var context_config_path string
+			if base_or_port {
+				imgpath = filepath.Join(Tmppath, "port_images", imgname)
+				fsconfig_path = filepath.Join(Tmppath, "port_images", "config", imgname+"_fs_config")
+				context_config_path = filepath.Join(Tmppath, "port_images", "config", imgname+"_file_contexts")
+				fmt.Println(imgpath)
+				fmt.Println(fsconfig_path)
+			} else {
+				imgpath = filepath.Join(Tmppath, "base_images", imgname)
+				fsconfig_path = filepath.Join(Tmppath, "base_images", "config", imgname+"_fs_config")
+				context_config_path = filepath.Join(Tmppath, "base_images", "config", imgname+"_file_contexts")
+				fmt.Println(imgpath)
+				fmt.Println(fsconfig_path)
+			}
 			err = utils.RunCommand(Imgextractorpath, "python", "./fspatch.py", imgpath, fsconfig_path)
 			checkerr(err)
 			err = utils.RunCommand(Imgextractorpath, "python", "./contextpatch.py", imgpath, context_config_path)
@@ -208,41 +229,77 @@ func updateAndroidPropValue(propFile, propName, newValue string) error {
 }
 
 func insertStringBeforeTag(filename, searchString, insertString string) error {
-    file, err := os.OpenFile(filename, os.O_RDWR, 0644)
-    if err != nil {
-        return err
-    }
-    defer file.Close()
-    scanner := bufio.NewScanner(file)
-    var lines []string
-    var lineNumber int
-    for scanner.Scan() {
-        lines = append(lines, scanner.Text())
-        if scanner.Text() == searchString {
-            lineNumber = len(lines)
-        }
-    }
-    if err := scanner.Err(); err != nil {
-        return err
-    }
-    lines = append(lines[:lineNumber-1], append([]string{insertString}, lines[lineNumber-1:]...)...)
-    if _, err := file.Seek(0, 0); err != nil {
-        return err
-    }
-    if err := file.Truncate(0); err != nil {
-        return err
-    }
-    writer := bufio.NewWriter(file)
-    defer writer.Flush()
-    for _, line := range lines {
-        _, err := fmt.Fprintln(writer, line)
-        if err != nil {
-            return err
-        }
-    }
-    return nil
+	file, err := os.OpenFile(filename, os.O_RDWR, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	var lines []string
+	var lineNumber int
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+		if scanner.Text() == searchString {
+			lineNumber = len(lines)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	lines = append(lines[:lineNumber-1], append([]string{insertString}, lines[lineNumber-1:]...)...)
+	if _, err := file.Seek(0, 0); err != nil {
+		return err
+	}
+	if err := file.Truncate(0); err != nil {
+		return err
+	}
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+	for _, line := range lines {
+		_, err := fmt.Fprintln(writer, line)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func findAPKs(dir string) []APKInfo {
+	var apkInfos []APKInfo
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		if strings.HasSuffix(strings.ToLower(info.Name()), ".apk") {
+			name := strings.TrimSuffix(info.Name(), ".apk")
+			apkInfos = append(apkInfos, APKInfo{Name: name, Path: path})
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+	return apkInfos
 }
 
+func decompile_apks(apkinfo []APKInfo) {
+	//var wg sync.WaitGroup
+	jadxpath := filepath.Join(Execpath, "bin", "jadx", "bin")
+	for _, apk_info := range apkinfo {
+		cmd := []string{"-d", filepath.Join(Tmppath, "apk_analysis", apk_info.Name), apk_info.Path, "--deobf", "--deobf-use-sourcename","--threads-count",fmt.Sprintf("%d",thread)}
+		err = utils.RunCommand(jadxpath, "./jadx", cmd...)
+
+		/*wg.Add(1)
+		go func(apk_info APKInfo) {
+			defer wg.Done()
+			cmd:=[]string{"-d",filepath.Join(Tmppath,"apk_analysis",apk_info.Name),apk_info.Path,"--deobf","--deobf-use-sourcename"}
+			err=utils.RunCommand(jadxpath,"./jadx",cmd...)
+		}(apk_info)*/
+	}
+	//wg.Wait()
+}
 func stage1_unzip() {
 	fmt.Println("stage 1: unzipping base pkg and port pkg")
 	var wg sync.WaitGroup
@@ -252,12 +309,14 @@ func stage1_unzip() {
 		err = UnzipPayloadbin(basePkg, "tmp", "payload.bin", "base.payload.bin")
 		checkerr(err)
 	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		err = UnzipPayloadbin(portPkg, "tmp", "payload.bin", "port.payload.bin")
-		checkerr(err)
-	}()
+	if !dec_mode {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err = UnzipPayloadbin(portPkg, "tmp", "payload.bin", "port.payload.bin")
+			checkerr(err)
+		}()
+	}
 	wg.Wait()
 
 }
@@ -272,20 +331,28 @@ func stage2_unpayload() {
 		err = payloaddump("base.payload.bin", "base_payload")
 		checkerr(err)
 	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		err = payloaddump("port.payload.bin", "port_payload")
-		checkerr(err)
-	}()
+
+	if !dec_mode {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err = payloaddump("port.payload.bin", "port_payload")
+			checkerr(err)
+		}()
+	}
 	wg.Wait()
 }
 func stage3_unparse() {
-	fmt.Println("stage 3: unparse images of super (base port) (system system_ext product mi_ext)")
-	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath, "tmp", "port_images", "config"))
+	fmt.Println("stage 3: unparse images of super (base port) (system system_ext product mi_ext odm)")
+	if !dec_mode {
+		utils.CreateDirectoryIfNotExists(filepath.Join(Execpath, "tmp", "port_images", "config"))
+	}
 	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath, "tmp", "base_images", "config"))
-	parts := []string{"system", "system_ext", "product", "mi_ext"}
+	parts := []string{"system", "system_ext", "product", "mi_ext", "odm", "vendor"}
 	extract_all_images(parts)
+	if dec_mode {
+		return
+	}
 	base_product_prop := filepath.Join(Tmppath, "base_images", "product", "etc", "build.prop")
 	checkerr(err)
 	port_product_prop := filepath.Join(Tmppath, "port_images", "product", "etc", "build.prop")
@@ -296,7 +363,6 @@ func stage3_unparse() {
 	checkerr(err)
 	fmt.Println("base_device id:", base_device_id)
 	fmt.Println("base_device id:", port_device_id)
-
 }
 func stage4_modify_prop_config() {
 	defer Wg.Done()
@@ -315,18 +381,19 @@ func stage4_modify_prop_config() {
 	base_density_v2_prop, err = getAndroidPropValue(base_product_prop, "persist.miui.density_v2")
 	err = updateAndroidPropValue(port_product_prop, "persist.miui.density_v2", base_density_v2_prop)
 	checkerr(err)
-	err = updateAndroidPropValue(port_product_prop, "ro.sf.lcd_density", base_density_v2_prop)
+	err = updateAndroidPropValue(port_product_prop, "ro.sf.lcd_density", base_density_v2_prop) //关于dpi相关
 	ignore_err(err)
-	err = updateAndroidPropValue(port_product_prop, "persist.miui.auto_ui_enable", "true")
+	err = updateAndroidPropValue(port_product_prop, "persist.miui.auto_ui_enable", "true") //关于应用布局优化
 	checkerr(err)
-	err = updateAndroidPropValue(port_product_prop, "debug.game.video.speed", "true")
+	err = updateAndroidPropValue(port_product_prop, "debug.game.video.speed", "true") //游戏视频三倍加速
 	checkerr(err)
-	err = updateAndroidPropValue(port_product_prop, "debug.game.video.support", "true")
+	err = updateAndroidPropValue(port_product_prop, "debug.game.video.support", "true") //游戏视频三倍加速
 	checkerr(err)
-	err = updateAndroidPropValue(port_product_prop, "persist.sys.background_blur_supported", "true")
+	err = updateAndroidPropValue(port_product_prop, "persist.sys.background_blur_supported", "true") //高级材质2
 	checkerr(err)
-	err = updateAndroidPropValue(port_product_prop, "persist.sys.background_blur_version", "2")
+	err = updateAndroidPropValue(port_product_prop, "persist.sys.background_blur_version", "2") //高级材质2
 	checkerr(err)
+
 }
 func stage5_modify_overlay_config() {
 	defer Wg.Done()
@@ -368,7 +435,7 @@ func stage7_change_device_features() {
 	err = utils.ReplaceFolder(base_feature, port_feature)
 	checkerr(err)
 	//wild mode?
-	err=insertStringBeforeTag(filepath.Join(port_feature,base_device_id+".xml"),"</features>",`    <bool name="support_wild_boost">true</bool>`)
+	err = insertStringBeforeTag(filepath.Join(port_feature, base_device_id+".xml"), "</features>", `    <bool name="support_wild_boost">true</bool>`)
 	checkerr(err)
 }
 func stage8_modify_camera() {
@@ -399,13 +466,15 @@ func stage9_add_autoui_adaption() {
 func stage10_downgrade_mslgrdp() {
 	defer Wg.Done()
 	fmt.Println("stage 10: Downgrade MSLG app")
-	port_mslgrdp_folder := filepath.Join(Tmppath, "port_images", "product", "app", "MSLgRdp")
+	/*port_mslgrdp_folder := filepath.Join(Tmppath, "port_images", "product", "app", "MSLgRdp")
 	base_mslgrdp_folder := filepath.Join(Tmppath, "base_images", "product", "app", "MSLgRdp")
 	base_mslgrdp_app := filepath.Join(base_mslgrdp_folder, "MSLgRdp.apk")
 	if utils.DirectoryExists(port_mslgrdp_folder) && utils.FileExists(base_mslgrdp_app) {
 		fmt.Println("found MSLg app folder and base app mslgrdp exists ->> downgrade !")
 		utils.ReplaceFolder(base_mslgrdp_folder, port_mslgrdp_folder)
-	}
+	}*/
+	
+	fmt.Println("WARN:This method has been deprecated!! mslg2 don't need to port this")
 }
 func stage11_unlock_freeform_settings() {
 	defer Wg.Done()
@@ -424,17 +493,17 @@ func stage12_settings_unlock_content_extension() {
 	var apk apkengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system_ext", "priv-app", "Settings", "Settings.apk")
 	apk.Pkgname = "Settings"
-	apk.Execpath = Execpath	
+	apk.Execpath = Execpath
 	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "isNeedRemoveContentExtension", false)
 	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "shouldShowAutoUIModeSetting", true)
 	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "showHighRefreshPreference", true)
 	//设置statusbar图标数量
 	/*
-	填坑:使用apkeditor可能会导致签名炸/??未知错误，待解决
-	lines,err:=utils.ReadLinesFromFile(filepath.Join(Execpath,"res","Settings_patch1.txt"))
-	checkerr(err)
-	apkengine.PatchApk_Return_and_patch_line(apk,"com.android.settings.NotificationStatusBarSettings","setupShowNotificationIconCount",lines)
-	apkengine.ModifyRes_stringArray(apk,filepath.Join("values","arrays.xml"),"notification_icon_counts_values",[]string{"0","3","10"})
+		填坑:使用apkeditor可能会导致签名炸/??未知错误，待解决
+		lines,err:=utils.ReadLinesFromFile(filepath.Join(Execpath,"res","Settings_patch1.txt"))
+		checkerr(err)
+		apkengine.PatchApk_Return_and_patch_line(apk,"com.android.settings.NotificationStatusBarSettings","setupShowNotificationIconCount",lines)
+		apkengine.ModifyRes_stringArray(apk,filepath.Join("values","arrays.xml"),"notification_icon_counts_values",[]string{"0","3","10"})
 	*/
 	apkengine.RepackApk(apk)
 }
@@ -445,12 +514,12 @@ func stage13_patch_systemUI() {
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system_ext", "priv-app", "MiuiSystemUI", "MiuiSystemUI.apk")
 	apk.Pkgname = "MiuiSystemUI"
 	apk.Execpath = Execpath
-	apkengine.Add_method_after(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", filepath.Join(Execpath,"res","systemUI_patch1.txt"))
-	apkengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", "onDraw", filepath.Join(Execpath,"res", "systemUI_patch2.txt"), false)
-	apkengine.Add_method_after(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", filepath.Join(Execpath,"res", "systemUI_patch4.txt"))
-	apkengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", "findTopDraggableFullscreenTaskInfo", filepath.Join(Execpath,"res", "systemUI_patch3.txt"), true)
-	apkengine.Add_method_after(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", filepath.Join(Execpath,"res", "systemUI_patch5.txt"))
-	apkengine.Patch_before_funcstart(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", "onDraw", filepath.Join(Execpath,"res", "systemUI_patch6.txt"), false)
+	apkengine.Add_method_after(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", filepath.Join(Execpath, "res", "systemUI_patch1.txt"))
+	apkengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", "onDraw", filepath.Join(Execpath, "res", "systemUI_patch2.txt"), false)
+	apkengine.Add_method_after(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", filepath.Join(Execpath, "res", "systemUI_patch4.txt"))
+	apkengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", "findTopDraggableFullscreenTaskInfo", filepath.Join(Execpath, "res", "systemUI_patch3.txt"), true)
+	apkengine.Add_method_after(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", filepath.Join(Execpath, "res", "systemUI_patch5.txt"))
+	apkengine.Patch_before_funcstart(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", "onDraw", filepath.Join(Execpath, "res", "systemUI_patch6.txt"), false)
 	apkengine.RepackApk(apk)
 }
 func stage14_fix_content_extension() {
@@ -493,7 +562,7 @@ func stage14_fix_content_extension() {
 	}
 	err = os.WriteFile(xmlFilePath, xmlBytes, 0644)
 	checkerr(err)
-	utils.CopyFile(filepath.Join(Execpath,"res","MIUIContentExtension.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "MIUIContentExtension", "MIUIContentExtension.apk"))
+	utils.CopyFile(filepath.Join(Execpath, "res", "MIUIContentExtension.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "MIUIContentExtension", "MIUIContentExtension.apk"))
 }
 func stage15_downgrade_privapp_verification() {
 	defer Wg.Done()
@@ -504,7 +573,7 @@ func stage15_downgrade_privapp_verification() {
 	apk.Execpath = Execpath
 	outputpath, err := apkengine.DecompileApk(apk)
 	checkerr(err)
-	err = utils.CopyFile(filepath.Join(Execpath,"res", "signkill.smali"), filepath.Join(Tmppath, "apkdec", "services", "smali", "com", "android", "signkill.smali"))
+	err = utils.CopyFile(filepath.Join(Execpath, "res", "signkill.smali"), filepath.Join(Tmppath, "apkdec", "services", "smali", "com", "android", "signkill.smali"))
 	checkerr(err)
 	ParsingPackageUtils, err := apkengine.Findfile_with_classname("com.android.server.pm.pkg.parsing.ParsingPackageUtils", outputpath)
 	checkerr(err)
@@ -540,42 +609,43 @@ func stage16_patch_desktop() {
 	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.DeviceConfig", "checkIsRecentsTaskSupportBlurV2", true)
 	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.common.BlurUtils", "isUseCompleteBlurOnDev", true)
 	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.recents.DimLayer", "isSupportDim", true)
-	apkengine.Add_method_after(apk, "com.miui.home.recents.GestureInputHelper", filepath.Join(Execpath, "res","MiuiHome_patch1.txt"))
-	apkengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureInputHelper", "onTriggerGestureSuccess", filepath.Join(Execpath,"res", "MiuiHome_patch2.txt"), true)
+	apkengine.Add_method_after(apk, "com.miui.home.recents.GestureInputHelper", filepath.Join(Execpath, "res", "MiuiHome_patch1.txt"))
+	apkengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureInputHelper", "onTriggerGestureSuccess", filepath.Join(Execpath, "res", "MiuiHome_patch2.txt"), true)
 	apkengine.RepackApk(apk)
 }
 func stage17_copy_custsettings() {
 	defer Wg.Done()
 	fmt.Println("stage 17: move Cust Settings to product")
-	utils.CopyFile(filepath.Join(Execpath, "res","CustSettings.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "CustSettings", "CustSettings.apk"))
+	utils.CopyFile(filepath.Join(Execpath, "res", "CustSettings.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "CustSettings", "CustSettings.apk"))
 }
 func stage18_powerkeeper_maxfps() {
 	defer Wg.Done()
 	fmt.Println("stage 18: disable screen code receive")
 	var apk apkengine.Apkfile
-	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system","system", "app", "PowerKeeper", "PowerKeeper.apk")
+	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system", "system", "app", "PowerKeeper", "PowerKeeper.apk")
 	apk.Pkgname = "PowerKeeper"
 	apk.Execpath = Execpath
-	apkengine.PatchApk_Return_number(apk,"com.miui.powerkeeper.feedbackcontrol.ThermalManager","getDisplayCtrlCode",0)
+	apkengine.PatchApk_Return_number(apk, "com.miui.powerkeeper.feedbackcontrol.ThermalManager", "getDisplayCtrlCode", 0)
 	apkengine.RepackApk(apk)
 }
-func stage19_remove_useless_apps(){
+func stage19_remove_useless_apps() {
 	defer Wg.Done()
-	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIUIDuokanReaderPad"))
+	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIDuokanReaderPad"))
 	checkerr(err)
-	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIpayPad_NO_NFC"))	
+	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIpayPad_NO_NFC"))
 	checkerr(err)
-	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIUIYoupin"))
+	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIYoupin"))
 	checkerr(err)
-	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MiShop"))
+	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MiShop"))
 	checkerr(err)
-	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIUIGameCenterPad"))
+	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIGameCenterPad"))
 	checkerr(err)
-	err=utils.DeleteDirectory(filepath.Join(Tmppath,"port_images","product","data-app","MIUIEmail"))
+	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIEmail"))
 	checkerr(err)
 }
+
 // 2023-01-27
-func main() {	
+func main() {
 	sysType = runtime.GOOS
 	thread = runtime.NumCPU()
 	if sysType != "linux" && sysType != "windows" {
@@ -584,9 +654,10 @@ func main() {
 	flag.StringVar(&basePkg, "base", "", "Original package (zip full ota package)")
 	flag.StringVar(&portPkg, "port", "", "Port package (zip full ota package)")
 	flag.IntVar(&current_stage, "stage", 0, "In which stage to start(If the program exited unexpectedly,-stage xxx)")
-	flag.BoolVar(&skip_thread_limit,"skip_thread_limit",false,"skip program thread check")
-	flag.BoolVar(&primary_port,"primary",false,"Only primary port,and no new features will be added")
-	flag.BoolVar(&init_debug,"init_debug",false,"open init debug(dangerous!!),not yet implemented") 
+	flag.BoolVar(&skip_thread_limit, "skip_thread_limit", false, "skip program thread check")
+	flag.BoolVar(&primary_port, "primary", false, "Only primary port,and no new features will be added")
+	flag.BoolVar(&init_debug, "init_debug", false, "open init debug(dangerous!!),not yet implemented")
+	flag.BoolVar(&dec_mode, "dec_mode", false, "Start decompile each apk to java code from baserom (use jadx)")
 	flag.Parse()
 	executable, _ := os.Executable()
 	Execpath = filepath.Dir(executable)
@@ -595,29 +666,35 @@ func main() {
 	Outpath = filepath.Join(Execpath, "out")
 	Imgextractorpath = filepath.Join(Execpath, "bin", "imgextractor")
 	utils.CreateDirectoryIfNotExists(Outpath)
-	if basePkg == "" || portPkg == "" {
+	if basePkg == "" || portPkg == "" && !dec_mode {
 		ErrorAndExit("Base package or port package is null")
 	}
 	if basePkg == portPkg {
 		ErrorAndExit("Base package or port package is same.")
 	}
-	if !utils.FileExists(basePkg) || !utils.FileExists(portPkg) {
+	if !utils.FileExists(basePkg) || (!utils.FileExists(portPkg) && !dec_mode) {
 		ErrorAndExit("Base package or port package not found")
 	}
-	if thread <= 8 && !skip_thread_limit{
+	if thread <= 8 && !skip_thread_limit {
 		ErrorAndExit("Too few CPU threads (<=8) , the program may cause problems")
 	}
-	fmt.Println("===========Welcome Faucet Pad OS Porter============")
+	if dec_mode {
+		fmt.Println("===========Welcome Faucet Pad OS Decompiler========")
+	} else {
+		fmt.Println("===========Welcome Faucet Pad OS Porter============")
+	}
 	fmt.Println("OS=" + sysType)
 	fmt.Printf("Thread=%d\n", thread)
 	fmt.Println("Binpath=" + Binpath)
 	fmt.Println("basepkg=" + basePkg)
-	fmt.Println("portpkg=" + portPkg)
+	if !dec_mode {
+		fmt.Println("portpkg=" + portPkg)
+	}
 	fmt.Println("Execpath=" + Execpath)
-	if skip_thread_limit && thread<=8{
+	if skip_thread_limit && thread <= 8 {
 		fmt.Println("You have enabled the flag of skip_thread_limit and detected that the number of threads is too few.. the program may cause problems")
 	}
-	if init_debug{
+	if init_debug {
 		fmt.Println("init_debug flag is enabled,do not share your package to others.")
 	}
 	if current_stage != 0 {
@@ -649,9 +726,16 @@ func main() {
 		stage3_unparse()
 		current_stage++
 	}
+	if current_stage == 4 && dec_mode {
+		fmt.Println("stage 4 :find and decompile apks in base image")
+		apks := findAPKs(filepath.Join(Tmppath, "base_images"))
+		fmt.Println("Total apks (apk in product system system_ext mi_ext):", len(apks))
+		decompile_apks(apks)
+		current_stage = 100
+	}
 	if current_stage == 4 {
 		//仅做基础移植
-		if primary_port{
+		if primary_port {
 			Wg.Add(7)
 			go stage4_modify_prop_config()
 			go stage5_modify_overlay_config()
@@ -661,8 +745,8 @@ func main() {
 			go stage9_add_autoui_adaption()
 			go stage10_downgrade_mslgrdp()
 			Wg.Wait()
-	
-		}else{
+
+		} else {
 			Wg.Add(16)
 			go stage4_modify_prop_config()
 			go stage5_modify_overlay_config()
@@ -680,17 +764,20 @@ func main() {
 			go stage17_copy_custsettings()
 			go stage18_powerkeeper_maxfps()
 			go stage19_remove_useless_apps()
-			Wg.Wait()	
+			Wg.Wait()
 		}
-		current_stage=99
+		current_stage = 99
 	}
-	if current_stage==98{
+	if current_stage == 98 {
 		fmt.Println("debug....")
 	}
 	if current_stage == 99 {
 		fmt.Println("stage 99:update FS config and Context and package (EROFS).")
 		parts := []string{"system","system_ext","product","mi_ext"}
-		package_img(parts)
+		package_img(parts,true)
+		//考虑到有可能要重新打包原包(如果原包有修改)
+		//parts_base := []string{"odm"}
+		//package_img(parts_base, false)
 	}
 	elapsedTime := time.Since(startTime)
 	elapsedMinutes := elapsedTime.Minutes()

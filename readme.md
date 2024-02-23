@@ -8,9 +8,11 @@ usage:
 go build
 ./faucetpadporter  -base 原包.zip -port 移植包.zip
 ```
+注意：仅支持平板6系并且升级到mslg新方案的设备(6,6pro 1.0.4.0+,6max 1.0.(>2).0+)，否则mslg会出现问题。
+
+并且默认打包erofs的fastbootd镜像，而不是super，
 
 鉴于这个项目过于不要脸，以后部分代码随缘更新，哈哈
-
 
 
 | 系统/硬件要求 | 适配情况 |
