@@ -134,6 +134,7 @@ func extract_all_images(parts []string) {
 	}
 	wg.Wait()
 }
+
 // 考虑到未来重新打包可能存在重打包base的情况，true为打包port，false为打包base
 func package_img(parts []string, base_or_port bool) {
 	var wg sync.WaitGroup
@@ -288,7 +289,7 @@ func decompile_apks(apkinfo []APKInfo) {
 	//var wg sync.WaitGroup
 	jadxpath := filepath.Join(Execpath, "bin", "jadx", "bin")
 	for _, apk_info := range apkinfo {
-		cmd := []string{"-d", filepath.Join(Tmppath, "apk_analysis", apk_info.Name), apk_info.Path, "--deobf", "--deobf-use-sourcename","--threads-count",fmt.Sprintf("%d",thread)}
+		cmd := []string{"-d", filepath.Join(Tmppath, "apk_analysis", apk_info.Name), apk_info.Path, "--deobf", "--deobf-use-sourcename", "--threads-count", fmt.Sprintf("%d", thread)}
 		err = utils.RunCommand(jadxpath, "./jadx", cmd...)
 
 		/*wg.Add(1)
@@ -463,18 +464,15 @@ func stage9_add_autoui_adaption() {
 		fmt.Println("warn:")
 	}
 }
-func stage10_downgrade_mslgrdp() {
+func stage10_fix_biometric_face() {
 	defer Wg.Done()
-	fmt.Println("stage 10: Downgrade MSLG app")
-	/*port_mslgrdp_folder := filepath.Join(Tmppath, "port_images", "product", "app", "MSLgRdp")
-	base_mslgrdp_folder := filepath.Join(Tmppath, "base_images", "product", "app", "MSLgRdp")
-	base_mslgrdp_app := filepath.Join(base_mslgrdp_folder, "MSLgRdp.apk")
-	if utils.DirectoryExists(port_mslgrdp_folder) && utils.FileExists(base_mslgrdp_app) {
-		fmt.Println("found MSLg app folder and base app mslgrdp exists ->> downgrade !")
-		utils.ReplaceFolder(base_mslgrdp_folder, port_mslgrdp_folder)
-	}*/
-	
-	fmt.Println("WARN:This method has been deprecated!! mslg2 don't need to port this")
+	fmt.Println("stage 10: Fix biometric face")
+	port_Biometric_folder := filepath.Join(Tmppath, "port_images", "product", "app","Biometric")
+	base_Biometric_folder := filepath.Join(Tmppath, "base_images", "product", "app","Biometric")
+	if utils.DirectoryExists(base_Biometric_folder) {
+		fmt.Println("found base bio app folder ! Start replace")
+		utils.ReplaceFolder(base_Biometric_folder, port_Biometric_folder)
+	}
 }
 func stage11_unlock_freeform_settings() {
 	defer Wg.Done()
@@ -743,7 +741,7 @@ func main() {
 			go stage7_change_device_features()
 			go stage8_modify_camera()
 			go stage9_add_autoui_adaption()
-			go stage10_downgrade_mslgrdp()
+			go stage10_fix_biometric_face()
 			Wg.Wait()
 
 		} else {
@@ -754,7 +752,7 @@ func main() {
 			go stage7_change_device_features()
 			go stage8_modify_camera()
 			go stage9_add_autoui_adaption()
-			go stage10_downgrade_mslgrdp()
+			go stage10_fix_biometric_face()
 			go stage11_unlock_freeform_settings()
 			go stage12_settings_unlock_content_extension()
 			go stage13_patch_systemUI()
