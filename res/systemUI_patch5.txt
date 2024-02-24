@@ -1,16 +1,21 @@
+
 .method public isHideLines()Z
     .registers 3
-    .line 52
-    sget-object p0, Lcom/android/systemui/SystemUIApplication;->sContext:Landroid/content/Context;
-    invoke-virtual {p0}, Landroid/content/Context;->getContentResolver()Landroid/content/ContentResolver;
-    move-result-object p0
-    const-string v0, "hide_lines"
-    const/4 v1, 0x0
-    invoke-static {p0, v0, v1}, Landroid/provider/Settings$Global;->getInt(Landroid/content/ContentResolver;Ljava/lang/String;I)I
-    move-result p0
-    const/4 v0, 0x1
-    if-ne p0, v0, :cond_11
-    move v1, v0
+    const/4 p0, 0x0
+    .line 53
+    :try_start_1
+    sget-object v0, Lcom/android/systemui/SystemUIApplication;->sContext:Landroid/content/Context;
+    invoke-virtual {v0}, Landroid/content/Context;->getContentResolver()Landroid/content/ContentResolver;
+    move-result-object v0
+    const-string v1, "hide_lines"
+    invoke-static {v0, v1, p0}, Landroid/provider/Settings$Global;->getInt(Landroid/content/ContentResolver;Ljava/lang/String;I)I
+    move-result v0
+    :try_end_d
+    .catchall {:try_start_1 .. :try_end_d} :catchall_11
+    const/4 v1, 0x1
+    if-ne v0, v1, :cond_11
+    move p0, v1
+    :catchall_11
     :cond_11
-    return v1
+    return p0
 .end method
