@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"encoding/xml"
+	"crypto/md5"
+    "encoding/hex"
 	"faucetpadporter/apkengine"
 	"faucetpadporter/utils"
 	"flag"
@@ -18,6 +20,8 @@ import (
 var sysType string
 var basePkg string
 var portPkg string
+var buildhost string
+var buildtime string
 var skip_thread_limit bool //跳过线程数量检查
 var primary_port bool      //基本移植
 var init_debug bool        //开启包内debug
@@ -171,6 +175,7 @@ func package_img(parts []string, base_or_port bool) {
 	}
 	wg.Wait()
 }
+
 func getAndroidPropValue(propFile, propName string) (string, error) {
 	file, err := os.Open(propFile)
 	if err != nil {
@@ -227,6 +232,25 @@ func updateAndroidPropValue(propFile, propName, newValue string) error {
 		fmt.Fprintln(writer, line)
 	}
 	return writer.Flush()
+}
+func getHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return hostname
+}
+func getCurrentTime() string {
+    currentTime := time.Now()
+    formattedTime := currentTime.Format("2006-01-02_150405")
+    return formattedTime
+}
+func calculateMD5Hash(text string) string {
+    hasher := md5.New()
+    hasher.Write([]byte(text))
+    hashSum := hasher.Sum(nil)
+    hexString := hex.EncodeToString(hashSum)
+    return hexString
 }
 
 func insertStringBeforeTag(filename, searchString, insertString string) error {
@@ -344,12 +368,12 @@ func stage2_unpayload() {
 	wg.Wait()
 }
 func stage3_unparse() {
-	fmt.Println("stage 3: unparse images of super (base port) (system system_ext product mi_ext odm)")
+	fmt.Println("stage 3: unparse images of super (base port) (system system_ext product mi_ext)")
 	if !dec_mode {
 		utils.CreateDirectoryIfNotExists(filepath.Join(Execpath, "tmp", "port_images", "config"))
 	}
 	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath, "tmp", "base_images", "config"))
-	parts := []string{"system", "system_ext", "product", "mi_ext", "odm", "vendor"}
+	parts := []string{"system", "system_ext", "product", "mi_ext"}
 	extract_all_images(parts)
 	if dec_mode {
 		return
@@ -373,9 +397,10 @@ func stage4_modify_prop_config() {
 	port_product_prop := filepath.Join(Tmppath, "port_images", "product", "etc", "build.prop")
 	checkerr(err)
 	port_miext_prop := filepath.Join(Tmppath, "port_images", "mi_ext", "etc", "build.prop")
-
 	fmt.Println("mod:", port_miext_prop)
 	err = updateAndroidPropValue(port_miext_prop, "ro.product.mod_device", base_device_id)
+	checkerr(err)
+	err = updateAndroidPropValue(port_miext_prop, "ro.faucetpadporter.settings",port_device_id+"/"+base_device_id+"/"+buildtime+"/"+buildhost+"/"+calculateMD5Hash(port_device_id+base_device_id+buildtime+buildhost+"faucetpadporter"))
 	checkerr(err)
 	err = updateAndroidPropValue(port_product_prop, "ro.product.product.name", base_device_id)
 	checkerr(err)
@@ -467,8 +492,8 @@ func stage9_add_autoui_adaption() {
 func stage10_fix_biometric_face() {
 	defer Wg.Done()
 	fmt.Println("stage 10: Fix biometric face")
-	port_Biometric_folder := filepath.Join(Tmppath, "port_images", "product", "app","Biometric")
-	base_Biometric_folder := filepath.Join(Tmppath, "base_images", "product", "app","Biometric")
+	port_Biometric_folder := filepath.Join(Tmppath, "port_images", "product", "app", "Biometric")
+	base_Biometric_folder := filepath.Join(Tmppath, "base_images", "product", "app", "Biometric")
 	if utils.DirectoryExists(base_Biometric_folder) {
 		fmt.Println("found base bio app folder ! Start replace")
 		utils.ReplaceFolder(base_Biometric_folder, port_Biometric_folder)
@@ -656,7 +681,9 @@ func main() {
 	flag.BoolVar(&primary_port, "primary", false, "Only primary port,and no new features will be added")
 	flag.BoolVar(&init_debug, "init_debug", false, "open init debug(dangerous!!),not yet implemented")
 	flag.BoolVar(&dec_mode, "dec_mode", false, "Start decompile each apk to java code from baserom (use jadx)")
+	flag.StringVar(&buildhost,"author",getHostname(),"set author name")
 	flag.Parse()
+	buildtime = getCurrentTime()
 	executable, _ := os.Executable()
 	Execpath = filepath.Dir(executable)
 	Binpath = filepath.Join(Execpath, "bin", sysType)
@@ -681,6 +708,8 @@ func main() {
 	} else {
 		fmt.Println("===========Welcome Faucet Pad OS Porter============")
 	}
+	fmt.Println("BuildHost=",buildhost)
+	fmt.Println("BuildTime=",buildtime)
 	fmt.Println("OS=" + sysType)
 	fmt.Printf("Thread=%d\n", thread)
 	fmt.Println("Binpath=" + Binpath)
@@ -771,8 +800,8 @@ func main() {
 	}
 	if current_stage == 99 {
 		fmt.Println("stage 99:update FS config and Context and package (EROFS).")
-		parts := []string{"system","system_ext","product","mi_ext"}
-		package_img(parts,true)
+		parts := []string{"system", "system_ext", "product", "mi_ext"}
+		package_img(parts, true)
 		//考虑到有可能要重新打包原包(如果原包有修改)
 		//parts_base := []string{"odm"}
 		//package_img(parts_base, false)
