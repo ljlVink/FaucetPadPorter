@@ -1,0 +1,22 @@
+
+.method public static isDisableDockUp()Z
+    .registers 3
+    const/4 v0, 0x0
+    .line 11
+    :try_start_1
+    sget-object v1, Lcom/android/systemui/SystemUIApplication;->sContext:Landroid/content/Context;
+    invoke-virtual {v1}, Landroid/content/Context;->getContentResolver()Landroid/content/ContentResolver;
+    move-result-object v1
+    const-string v2, "disable_dock_up"
+    invoke-static {v1, v2, v0}, Landroid/provider/Settings$Global;->getInt(Landroid/content/ContentResolver;Ljava/lang/String;I)I
+    move-result v1
+    :try_end_d
+    .catchall {:try_start_1 .. :try_end_d} :catchall_11
+    const/4 v2, 0x1
+    if-ne v1, v2, :cond_11
+    move v0, v2
+    :catchall_11
+    :cond_11
+    return v0
+.end method
+

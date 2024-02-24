@@ -622,7 +622,7 @@ func stage15_downgrade_privapp_verification() {
 }
 func stage16_patch_desktop() {
 	defer Wg.Done()
-	fmt.Println("stage 16:fix desktop")
+	fmt.Println("stage 16:patch desktop")
 	var apk apkengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "product", "priv-app", "MiuiHome", "MiuiHome.apk")
 	apk.Pkgname = "MiuiHome"
@@ -634,6 +634,8 @@ func stage16_patch_desktop() {
 	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.recents.DimLayer", "isSupportDim", true)
 	apkengine.Add_method_after(apk, "com.miui.home.recents.GestureInputHelper", filepath.Join(Execpath, "res", "MiuiHome_patch1.txt"))
 	apkengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureInputHelper", "onTriggerGestureSuccess", filepath.Join(Execpath, "res", "MiuiHome_patch2.txt"), true)
+	apkengine.Add_method_after(apk,"com.miui.home.recents.GestureTouchEventTracker",filepath.Join(Execpath,"res","MiuiHome_patch3.txt"))
+	apkengine.Patch_before_funcstart(apk,"com.miui.home.recents.GestureTouchEventTracker","isUseDockFollowGesture",filepath.Join(Execpath,"res","MiuiHome_patch4.txt"),true)
 	apkengine.RepackApk(apk)
 }
 func stage17_copy_custsettings() {
