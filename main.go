@@ -2,9 +2,9 @@ package main
 
 import (
 	"bufio"
-	"encoding/xml"
 	"crypto/md5"
-    "encoding/hex"
+	"encoding/hex"
+	"encoding/xml"
 	"faucetpadporter/apkengine"
 	"faucetpadporter/utils"
 	"flag"
@@ -241,16 +241,16 @@ func getHostname() string {
 	return hostname
 }
 func getCurrentTime() string {
-    currentTime := time.Now()
-    formattedTime := currentTime.Format("2006-01-02_150405")
-    return formattedTime
+	currentTime := time.Now()
+	formattedTime := currentTime.Format("2006-01-02_150405")
+	return formattedTime
 }
 func calculateMD5Hash(text string) string {
-    hasher := md5.New()
-    hasher.Write([]byte(text))
-    hashSum := hasher.Sum(nil)
-    hexString := hex.EncodeToString(hashSum)
-    return hexString
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	hashSum := hasher.Sum(nil)
+	hexString := hex.EncodeToString(hashSum)
+	return hexString
 }
 
 func insertStringBeforeTag(filename, searchString, insertString string) error {
@@ -325,6 +325,19 @@ func decompile_apks(apkinfo []APKInfo) {
 	}
 	//wg.Wait()
 }
+//chatgpt
+func extractDate(dateStr, layout string) string {
+	parts := strings.Split(dateStr, "-")
+	if len(parts) < 2 {
+		return ""
+	}
+	datePart := parts[1]
+	t, err := time.Parse(layout, "rootfs-"+datePart)
+	if err != nil {
+		return ""
+	}
+	return t.Format(layout)
+}
 func stage1_unzip() {
 	fmt.Println("stage 1: unzipping base pkg and port pkg")
 	var wg sync.WaitGroup
@@ -373,7 +386,7 @@ func stage3_unparse() {
 		utils.CreateDirectoryIfNotExists(filepath.Join(Execpath, "tmp", "port_images", "config"))
 	}
 	utils.CreateDirectoryIfNotExists(filepath.Join(Execpath, "tmp", "base_images", "config"))
-	parts := []string{"system", "system_ext", "product", "mi_ext"}
+	parts := []string{"system", "system_ext", "product", "mi_ext", "odm"}
 	extract_all_images(parts)
 	if dec_mode {
 		return
@@ -400,7 +413,7 @@ func stage4_modify_prop_config() {
 	fmt.Println("mod:", port_miext_prop)
 	err = updateAndroidPropValue(port_miext_prop, "ro.product.mod_device", base_device_id)
 	checkerr(err)
-	err = updateAndroidPropValue(port_miext_prop, "ro.faucetpadporter.settings",port_device_id+"/"+base_device_id+"/"+buildtime+"/"+buildhost+"/"+calculateMD5Hash(port_device_id+base_device_id+buildtime+buildhost+"faucetpadporter"))
+	err = updateAndroidPropValue(port_miext_prop, "ro.faucetpadporter.settings", port_device_id+"/"+base_device_id+"/"+buildtime+"/"+buildhost+"/"+calculateMD5Hash(port_device_id+base_device_id+buildtime+buildhost+"faucetpadporter"))
 	checkerr(err)
 	err = updateAndroidPropValue(port_product_prop, "ro.product.product.name", base_device_id)
 	checkerr(err)
@@ -634,8 +647,8 @@ func stage16_patch_desktop() {
 	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.recents.DimLayer", "isSupportDim", true)
 	apkengine.Add_method_after(apk, "com.miui.home.recents.GestureInputHelper", filepath.Join(Execpath, "res", "MiuiHome_patch1.txt"))
 	apkengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureInputHelper", "onTriggerGestureSuccess", filepath.Join(Execpath, "res", "MiuiHome_patch2.txt"), true)
-	apkengine.Add_method_after(apk,"com.miui.home.recents.GestureTouchEventTracker",filepath.Join(Execpath,"res","MiuiHome_patch3.txt"))
-	apkengine.Patch_before_funcstart(apk,"com.miui.home.recents.GestureTouchEventTracker","isUseDockFollowGesture",filepath.Join(Execpath,"res","MiuiHome_patch4.txt"),true)
+	apkengine.Add_method_after(apk, "com.miui.home.recents.GestureTouchEventTracker", filepath.Join(Execpath, "res", "MiuiHome_patch3.txt"))
+	apkengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureTouchEventTracker", "isUseDockFollowGesture", filepath.Join(Execpath, "res", "MiuiHome_patch4.txt"), true)
 	apkengine.RepackApk(apk)
 }
 func stage17_copy_custsettings() {
@@ -655,18 +668,47 @@ func stage18_powerkeeper_maxfps() {
 }
 func stage19_remove_useless_apps() {
 	defer Wg.Done()
-	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIDuokanReaderPad"))
+	fmt.Println("stage 19: remove useless apps")
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIDuokanReaderPad"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIpayPad_NO_NFC"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIYoupin"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MiShop"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIGameCenterPad"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIEmail"))	
+}
+func stage20_upgrade_rootfs_usrimg_prop() {
+	defer Wg.Done()
+	fmt.Println("stage 20: upgrade rootfs usr prop")
+	base_odm_prop := filepath.Join(Tmppath, "base_images", "odm", "etc", "build.prop")
+	port_odm_prop := filepath.Join(Tmppath, "port_images", "odm", "etc", "build.prop")
+	mslg_version_prop:="ro.vendor.mslg.rootfs.version"
+	base_rootfs_version, _ := getAndroidPropValue(base_odm_prop, mslg_version_prop)
+	port_rootfs_version, _ := getAndroidPropValue(port_odm_prop, mslg_version_prop) //rootfs-YY.MM.DD.tgz
+	layout := "rootfs-06.01.02.tgz"
+	if base_rootfs_version == "" {
+		fmt.Println("base device does not support mslg V2")
+	}
+	if port_rootfs_version == "" {
+		fmt.Println("base supports mslg v2, but port does not seem to support it.")
+	}
+	base_rootfs_date, err := time.Parse(layout, extractDate(base_rootfs_version, layout))
 	checkerr(err)
-	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIpayPad_NO_NFC"))
+	port_rootfs_date, err := time.Parse(layout, extractDate(port_rootfs_version, layout))
 	checkerr(err)
-	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIYoupin"))
-	checkerr(err)
-	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MiShop"))
-	checkerr(err)
-	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIGameCenterPad"))
-	checkerr(err)
-	err = utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIEmail"))
-	checkerr(err)
+	if base_rootfs_date.Before(port_rootfs_date){
+		fmt.Println("base rootfs is outdated,update rootfs version.")
+		err=utils.CopyFile(filepath.Join(Tmppath,"port_images","odm","etc","assets","mslgusrimg"),filepath.Join(Tmppath,"base_images","odm","etc","assets","mslgusrimg"))
+		checkerr(err)
+		err=utils.CopyFile(filepath.Join(Tmppath,"port_images","odm","etc","assets","md5.txt"),filepath.Join(Tmppath,"base_images","odm","etc","assets","md5.txt"))
+		checkerr(err)
+		err=utils.CopyFile(filepath.Join(Tmppath,"port_images","odm","etc","assets",port_rootfs_version),filepath.Join(Tmppath,"base_images","odm","etc","assets",port_rootfs_version))
+		checkerr(err)
+		_=utils.DeleteFile(filepath.Join(Tmppath,"base_images","odm","etc","assets",base_rootfs_version))
+		err=updateAndroidPropValue(base_odm_prop,mslg_version_prop,port_rootfs_version)    //注意 打包时候要 使用本机的odm !!!
+		checkerr(err)
+	}else{
+		fmt.Println("base rootfs is newer or equal to port version,no need to update.")
+	}
 }
 
 // 2023-01-27
@@ -683,7 +725,7 @@ func main() {
 	flag.BoolVar(&primary_port, "primary", false, "Only primary port,and no new features will be added")
 	flag.BoolVar(&init_debug, "init_debug", false, "open init debug(dangerous!!),not yet implemented")
 	flag.BoolVar(&dec_mode, "dec_mode", false, "Start decompile each apk to java code from baserom (use jadx)")
-	flag.StringVar(&buildhost,"author",getHostname(),"set author name")
+	flag.StringVar(&buildhost, "author", getHostname(), "set author name")
 	flag.Parse()
 	buildtime = getCurrentTime()
 	executable, _ := os.Executable()
@@ -710,8 +752,8 @@ func main() {
 	} else {
 		fmt.Println("===========Welcome Faucet Pad OS Porter============")
 	}
-	fmt.Println("BuildHost=",buildhost)
-	fmt.Println("BuildTime=",buildtime)
+	fmt.Println("BuildHost=", buildhost)
+	fmt.Println("BuildTime=", buildtime)
 	fmt.Println("OS=" + sysType)
 	fmt.Printf("Thread=%d\n", thread)
 	fmt.Println("Binpath=" + Binpath)
@@ -776,7 +818,7 @@ func main() {
 			Wg.Wait()
 
 		} else {
-			Wg.Add(16)
+			Wg.Add(17)
 			go stage4_modify_prop_config()
 			go stage5_modify_overlay_config()
 			go stage6_modify_displayconfig()
@@ -793,6 +835,7 @@ func main() {
 			go stage17_copy_custsettings()
 			go stage18_powerkeeper_maxfps()
 			go stage19_remove_useless_apps()
+			go stage20_upgrade_rootfs_usrimg_prop()
 			Wg.Wait()
 		}
 		current_stage = 99
@@ -802,11 +845,10 @@ func main() {
 	}
 	if current_stage == 99 {
 		fmt.Println("stage 99:update FS config and Context and package (EROFS).")
-		parts := []string{"system", "system_ext", "product", "mi_ext"}
-		package_img(parts, true)
-		//考虑到有可能要重新打包原包(如果原包有修改)
-		//parts_base := []string{"odm"}
-		//package_img(parts_base, false)
+		parts_port := []string{"system", "system_ext", "product", "mi_ext"}
+		package_img(parts_port, true)
+		parts_base := []string{"odm"}
+		package_img(parts_base, false)
 	}
 	elapsedTime := time.Since(startTime)
 	elapsedMinutes := elapsedTime.Minutes()
