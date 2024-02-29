@@ -5,6 +5,7 @@ import (
 	"strings"
 	"os"
 	"bufio"
+	"path/filepath"
 	"github.com/otiai10/copy"
 )
 //chatgpt
@@ -98,4 +99,35 @@ func ReplaceStringInFile(filePath, findStr, replaceStr string) error {
 	}
 
 	return nil
+}
+func FindIMGFiles(directory string) ([]string, error) {
+	var imgFiles []string
+	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".img") {
+			imgFiles = append(imgFiles, strings.TrimSuffix(info.Name(), ".img"))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return imgFiles, nil
+}
+
+func Finddiff(a, b []string) []string {
+	bMap := make(map[string]bool)
+	for _, v := range b {
+		bMap[v] = true
+	}
+	var diff []string
+	for _, v := range a {
+		if _, exists := bMap[v]; !exists {
+			diff = append(diff, v)
+		}
+	}
+
+	return diff
 }

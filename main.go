@@ -26,7 +26,7 @@ var skip_thread_limit bool //跳过线程数量检查
 var primary_port bool      //基本移植
 var init_debug bool        //开启包内debug
 var dec_mode bool          //整包apk逆向模式
-
+var gitver string
 var err error
 
 var Execpath string
@@ -325,7 +325,8 @@ func decompile_apks(apkinfo []APKInfo) {
 	}
 	//wg.Wait()
 }
-//chatgpt
+
+// chatgpt
 func extractDate(dateStr, layout string) string {
 	parts := strings.Split(dateStr, "-")
 	if len(parts) < 2 {
@@ -415,6 +416,11 @@ func stage4_modify_prop_config() {
 	checkerr(err)
 	err = updateAndroidPropValue(port_miext_prop, "ro.faucetpadporter.settings", port_device_id+"/"+base_device_id+"/"+buildtime+"/"+buildhost+"/"+calculateMD5Hash(port_device_id+base_device_id+buildtime+buildhost+"faucetpadporter"))
 	checkerr(err)
+	if init_debug {
+		updateAndroidPropValue(port_miext_prop, "ro.secure", "0")
+		updateAndroidPropValue(port_miext_prop, "ro.adb.secure", "0")
+		updateAndroidPropValue(port_miext_prop, "ro.debuggable", "1")
+	}
 	err = updateAndroidPropValue(port_product_prop, "ro.product.product.name", base_device_id)
 	checkerr(err)
 	base_density_v2_prop, err = getAndroidPropValue(base_product_prop, "persist.miui.density_v2")
@@ -499,7 +505,7 @@ func stage9_add_autoui_adaption() {
 		err = utils.CopyFile(base_autoui, port_autoui)
 		checkerr(err)
 	} else {
-		fmt.Println("warn:")
+		fmt.Println("Port rom has autoui rules. don't move.")
 	}
 }
 func stage10_fix_biometric_face() {
@@ -533,6 +539,7 @@ func stage12_settings_unlock_content_extension() {
 	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "isNeedRemoveContentExtension", false)
 	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "shouldShowAutoUIModeSetting", true)
 	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "showHighRefreshPreference", true)
+	apkengine.PatchApk_Return_Boolean(apk, "com.android.settings.utils.SettingsFeatures", "isSupportMiuiDesktopMode", true)
 	//设置statusbar图标数量
 	/*
 		填坑:使用apkeditor可能会导致签名炸/??未知错误，待解决
@@ -674,41 +681,61 @@ func stage19_remove_useless_apps() {
 	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIYoupin"))
 	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MiShop"))
 	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIGameCenterPad"))
-	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIEmail"))	
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIEmail"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "BaiduIME"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "com.iflytek.inputmethod.miui"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIService"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "Mitukid"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIHuanji"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIVideoPad"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "app", "Updater"))
 }
 func stage20_upgrade_rootfs_usrimg_prop() {
 	defer Wg.Done()
 	fmt.Println("stage 20: upgrade rootfs usr prop")
 	base_odm_prop := filepath.Join(Tmppath, "base_images", "odm", "etc", "build.prop")
 	port_odm_prop := filepath.Join(Tmppath, "port_images", "odm", "etc", "build.prop")
-	mslg_version_prop:="ro.vendor.mslg.rootfs.version"
+	mslg_version_prop := "ro.vendor.mslg.rootfs.version"
 	base_rootfs_version, _ := getAndroidPropValue(base_odm_prop, mslg_version_prop)
 	port_rootfs_version, _ := getAndroidPropValue(port_odm_prop, mslg_version_prop) //rootfs-YY.MM.DD.tgz
 	layout := "rootfs-06.01.02.tgz"
 	if base_rootfs_version == "" {
 		fmt.Println("base device does not support mslg V2")
+		return
 	}
 	if port_rootfs_version == "" {
 		fmt.Println("base supports mslg v2, but port does not seem to support it.")
+		return
 	}
 	base_rootfs_date, err := time.Parse(layout, extractDate(base_rootfs_version, layout))
 	checkerr(err)
 	port_rootfs_date, err := time.Parse(layout, extractDate(port_rootfs_version, layout))
 	checkerr(err)
-	if base_rootfs_date.Before(port_rootfs_date){
+	if base_rootfs_date.Before(port_rootfs_date) {
 		fmt.Println("base rootfs is outdated,update rootfs version.")
-		err=utils.CopyFile(filepath.Join(Tmppath,"port_images","odm","etc","assets","mslgusrimg"),filepath.Join(Tmppath,"base_images","odm","etc","assets","mslgusrimg"))
+		err = utils.CopyFile(filepath.Join(Tmppath, "port_images", "odm", "etc", "assets", "mslgusrimg"), filepath.Join(Tmppath, "base_images", "odm", "etc", "assets", "mslgusrimg"))
 		checkerr(err)
-		err=utils.CopyFile(filepath.Join(Tmppath,"port_images","odm","etc","assets","md5.txt"),filepath.Join(Tmppath,"base_images","odm","etc","assets","md5.txt"))
+		err = utils.CopyFile(filepath.Join(Tmppath, "port_images", "odm", "etc", "assets", "md5.txt"), filepath.Join(Tmppath, "base_images", "odm", "etc", "assets", "md5.txt"))
 		checkerr(err)
-		err=utils.CopyFile(filepath.Join(Tmppath,"port_images","odm","etc","assets",port_rootfs_version),filepath.Join(Tmppath,"base_images","odm","etc","assets",port_rootfs_version))
+		err = utils.CopyFile(filepath.Join(Tmppath, "port_images", "odm", "etc", "assets", port_rootfs_version), filepath.Join(Tmppath, "base_images", "odm", "etc", "assets", port_rootfs_version))
 		checkerr(err)
-		_=utils.DeleteFile(filepath.Join(Tmppath,"base_images","odm","etc","assets",base_rootfs_version))
-		err=updateAndroidPropValue(base_odm_prop,mslg_version_prop,port_rootfs_version)    //注意 打包时候要 使用本机的odm !!!
+		_ = utils.DeleteFile(filepath.Join(Tmppath, "base_images", "odm", "etc", "assets", base_rootfs_version))
+		err = updateAndroidPropValue(base_odm_prop, mslg_version_prop, port_rootfs_version) //注意 打包时候要 使用本机的odm !!!
 		checkerr(err)
-	}else{
+	} else {
 		fmt.Println("base rootfs is newer or equal to port version,no need to update.")
 	}
+}
+
+func stage21_lowram_device_dkt() {
+	defer Wg.Done()
+	fmt.Println("stage 21: enable desktop mode for low ram devices")
+	var apk apkengine.Apkfile
+	apk.Apkpath = filepath.Join(Tmppath, "port_images", "product", "app", "MIUISystemUIPlugin", "MIUISystemUIPlugin.apk")
+	apk.Pkgname = "MIUISystemUIPlugin"
+	apk.Execpath = Execpath
+	apkengine.PatchApk_Return_Boolean(apk, "miui.systemui.quicksettings.MiuiDesktopModeTile", "isAvailable", true)
+	apkengine.RepackApk(apk)
 }
 
 // 2023-01-27
@@ -732,18 +759,9 @@ func main() {
 	Execpath = filepath.Dir(executable)
 	Binpath = filepath.Join(Execpath, "bin", sysType)
 	Tmppath = filepath.Join(Execpath, "tmp")
-	Outpath = filepath.Join(Execpath, "out")
+	Outpath = filepath.Join(Execpath, "out", "images")
 	Imgextractorpath = filepath.Join(Execpath, "bin", "imgextractor")
 	utils.CreateDirectoryIfNotExists(Outpath)
-	if basePkg == "" || portPkg == "" && !dec_mode {
-		ErrorAndExit("Base package or port package is null")
-	}
-	if basePkg == portPkg {
-		ErrorAndExit("Base package or port package is same.")
-	}
-	if !utils.FileExists(basePkg) || (!utils.FileExists(portPkg) && !dec_mode) {
-		ErrorAndExit("Base package or port package not found")
-	}
 	if thread <= 8 && !skip_thread_limit {
 		ErrorAndExit("Too few CPU threads (<=8) , the program may cause problems")
 	}
@@ -752,6 +770,10 @@ func main() {
 	} else {
 		fmt.Println("===========Welcome Faucet Pad OS Porter============")
 	}
+	if gitver == "" {
+		gitver = "dev_line"
+	}
+	fmt.Println("gitver=", gitver)
 	fmt.Println("BuildHost=", buildhost)
 	fmt.Println("BuildTime=", buildtime)
 	fmt.Println("OS=" + sysType)
@@ -778,13 +800,29 @@ func main() {
 		if utils.DirectoryExists(Tmppath) {
 			fmt.Println("delete tmp dictionary")
 			utils.DeleteDirectory(Tmppath)
-			utils.DeleteDirectory(Outpath)
+			utils.DeleteDirectory(filepath.Join(Execpath, "out"))
 			utils.CreateDirectoryIfNotExists(Outpath)
 		}
 		current_stage++
 	}
 	startTime := time.Now()
-
+	/*
+	Download rom :Not yet implemented.
+	if strings.HasPrefix(basePkg, "https://") {
+		fmt.Println("need to download")
+	}
+	if strings.HasPrefix(portPkg, "https://") {
+		fmt.Println("need to download")
+	}*/
+	if basePkg == "" || portPkg == "" && !dec_mode {
+		ErrorAndExit("Base package or port package is null")
+	}
+	if basePkg == portPkg {
+		ErrorAndExit("Base package or port package is same.")
+	}
+	if !utils.FileExists(basePkg) || (!utils.FileExists(portPkg) && !dec_mode) {
+		ErrorAndExit("Base package or port package not found")
+	}
 	if current_stage == 1 {
 		stage1_unzip()
 		current_stage++
@@ -802,7 +840,7 @@ func main() {
 		apks := findAPKs(filepath.Join(Tmppath, "base_images"))
 		fmt.Println("Total apks (apk in product system system_ext mi_ext):", len(apks))
 		decompile_apks(apks)
-		current_stage = 100
+		current_stage = 999
 	}
 	if current_stage == 4 {
 		//仅做基础移植
@@ -815,10 +853,11 @@ func main() {
 			go stage8_modify_camera()
 			go stage9_add_autoui_adaption()
 			go stage10_fix_biometric_face()
+			go stage20_upgrade_rootfs_usrimg_prop()
 			Wg.Wait()
 
 		} else {
-			Wg.Add(17)
+			Wg.Add(18)
 			go stage4_modify_prop_config()
 			go stage5_modify_overlay_config()
 			go stage6_modify_displayconfig()
@@ -836,6 +875,7 @@ func main() {
 			go stage18_powerkeeper_maxfps()
 			go stage19_remove_useless_apps()
 			go stage20_upgrade_rootfs_usrimg_prop()
+			go stage21_lowram_device_dkt()
 			Wg.Wait()
 		}
 		current_stage = 99
@@ -844,11 +884,36 @@ func main() {
 		fmt.Println("debug....")
 	}
 	if current_stage == 99 {
-		fmt.Println("stage 99:update FS config and Context and package (EROFS).")
-		parts_port := []string{"system", "system_ext", "product", "mi_ext"}
-		package_img(parts_port, true)
-		parts_base := []string{"odm"}
-		package_img(parts_base, false)
+		if utils.FileExists(filepath.Join(Execpath, "APKPATCH_ERROR_LOG")) {
+			fmt.Println("ERROR occoured when patching apks,pls check APKPATCH_ERROR_LOG")
+			current_stage = 999
+		} else {
+			fmt.Println("stage 99:update FS config and Context and package (EROFS).")
+			parts_port := []string{"system", "system_ext", "product", "mi_ext"}
+			package_img(parts_port, true)
+			parts_base := []string{"odm"}
+			package_img(parts_base, false)
+			current_stage++
+		}
+	}
+	if current_stage == 100 {
+		fmt.Println("stage final: make (uotan) fastbootd flash script and move files")
+		utils.WriteTofile(filepath.Join(Execpath, "out", "flashall_fastbootd.txt"), "codename:"+base_device_id)
+		parts := []string{"system", "system_ext", "product", "mi_ext", "odm", "vendor", "vendor_dlkm"}
+		for _, part := range parts {
+			utils.WriteTofile(filepath.Join(Execpath, "out", "flashall_fastbootd.txt"), part)
+		}
+		fmt.Println("stage final: make (uotan) fastboot flash script")
+		utils.WriteTofile(filepath.Join(Execpath, "out", "flashall_fastboot.txt"), "codename:"+base_device_id)
+		total, err := utils.FindIMGFiles(filepath.Join(Tmppath, "base_payload"))
+		checkerr(err)
+		part1 := utils.Finddiff(total, parts)
+		checkerr(err)
+		for _, part := range part1 {
+			err = utils.CopyFile(filepath.Join(Tmppath, "base_payload", part)+".img", filepath.Join(Execpath, "out", "images", part)+".img")
+			checkerr(err)
+			utils.WriteTofile(filepath.Join(Execpath, "out", "flashall_fastboot.txt"), part)
+		}
 	}
 	elapsedTime := time.Since(startTime)
 	elapsedMinutes := elapsedTime.Minutes()
