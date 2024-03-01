@@ -1,6 +1,6 @@
 module faucetpadporter
 
-go 1.21.3
+go 1.22
 
 require (
 	github.com/otiai10/copy v1.14.0 // indirect

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -252,12 +253,13 @@ func intToHexadecimal(n int) string {
 func RepackApk(apk Apkfile){
 	execpath:=apk.Execpath
 	apktoolpath:=filepath.Join(execpath,"bin","apktool")
+	binpath:=filepath.Join(execpath,"bin",runtime.GOOS)
 	apk_smali_path:=filepath.Join(execpath,"tmp","apkdec",apk.Pkgname)
 	if apk.Use_apkeditor{
 		err:=utils.RunCommand(apktoolpath,"java","-jar","./APKEditor-1.3.5.jar","b","-i",apk_smali_path,"-o",apk.Apkpath+".1") //写回 (apkeditor)
 		checkerr(err)
 		//对齐，否则apk会报错
-		err=utils.RunCommand(execpath,"zipalign","-p","-f","-v","4",apk.Apkpath+".1",apk.Apkpath)
+		err=utils.RunCommand(binpath,"zipalign","-p","-f","-v","4",apk.Apkpath+".1",apk.Apkpath)
 		checkerr(err)
 		utils.DeleteFile(apk.Apkpath+".1")
 		return
