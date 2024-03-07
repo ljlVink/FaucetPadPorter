@@ -17,6 +17,7 @@ type Apkfile struct{
 	Pkgname string
 	Execpath string
 	Need_api_29 bool 
+	Force_unpack_res bool
 	Use_apkeditor bool  //使用这个选项时一般需要处理resource的内容
 }
 func checkerr(err error) {
@@ -357,8 +358,13 @@ func DecompileApk(apk Apkfile)(outputpath string,error error){
 			return output_path,nil //already exists!
 		}
 		fmt.Println(apk.Apkpath)
-		err:=utils.RunCommand(apktoolpath,"java","-jar","./apktool.jar","-r","-f","d",apk.Apkpath,"-o",output_path)
-		return output_path,err
+		if apk.Force_unpack_res{
+			err:=utils.RunCommand(apktoolpath,"java","-jar","./apktool.jar","-f","d",apk.Apkpath,"-o",output_path)
+			return output_path,err
+		}else{
+			err:=utils.RunCommand(apktoolpath,"java","-jar","./apktool.jar","-r","-f","d",apk.Apkpath,"-o",output_path)
+			return output_path,err
+		}
 	}else{
 		apktoolpath:=filepath.Join(execpath,"bin","apktool")
 		pkgname:=apk.Pkgname

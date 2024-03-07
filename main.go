@@ -459,6 +459,7 @@ func stage5_modify_overlay_config() {
 	port_device1_overlay := filepath.Join(Tmppath, "port_images", "product", "overlay", "DevicesOverlay.apk")
 	err = utils.ReplaceFile(base_device1_overlay, port_device1_overlay)
 	checkerr(err)
+	stage22_enable_cellular_share()
 }
 func stage6_modify_displayconfig() {
 	defer Wg.Done()
@@ -690,6 +691,7 @@ func stage19_remove_useless_apps() {
 	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIVideoPad"))
 	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "app", "Updater"))
 }
+
 func stage20_upgrade_rootfs_usrimg_prop() {
 	defer Wg.Done()
 	fmt.Println("stage 20: upgrade rootfs usr prop")
@@ -735,6 +737,17 @@ func stage21_lowram_device_dkt() {
 	apk.Pkgname = "MIUISystemUIPlugin"
 	apk.Execpath = Execpath
 	apkengine.PatchApk_Return_Boolean(apk, "miui.systemui.quicksettings.MiuiDesktopModeTile", "isAvailable", true)
+	apkengine.RepackApk(apk)
+}
+func stage22_enable_cellular_share() {
+	//no need to add defer Wg.Done()
+	var apk apkengine.Apkfile
+	apk.Apkpath = filepath.Join(Tmppath, "port_images", "product", "overlay", "MiuiFrameworkResOverlay.apk")
+	apk.Pkgname = "MiuiFrameworkResOverlay"
+	apk.Execpath = Execpath
+	apk.Force_unpack_res = true
+	apkengine.DecompileApk(apk)
+	apkengine.ModifyRes_bool(apk, filepath.Join("values", "bools.xml"), "config_celluar_shared_support", "true")
 	apkengine.RepackApk(apk)
 }
 
@@ -807,13 +820,13 @@ func main() {
 	}
 	startTime := time.Now()
 	/*
-	Download rom :Not yet implemented.
-	if strings.HasPrefix(basePkg, "https://") {
-		fmt.Println("need to download")
-	}
-	if strings.HasPrefix(portPkg, "https://") {
-		fmt.Println("need to download")
-	}*/
+		Download rom :Not yet implemented.
+		if strings.HasPrefix(basePkg, "https://") {
+			fmt.Println("need to download")
+		}
+		if strings.HasPrefix(portPkg, "https://") {
+			fmt.Println("need to download")
+		}*/
 	if basePkg == "" || portPkg == "" && !dec_mode {
 		ErrorAndExit("Base package or port package is null")
 	}
