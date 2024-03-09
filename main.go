@@ -858,7 +858,7 @@ func main() {
 	if current_stage == 4 {
 		//仅做基础移植
 		if primary_port {
-			Wg.Add(7)
+			Wg.Add(8)
 			go stage4_modify_prop_config()
 			go stage5_modify_overlay_config()
 			go stage6_modify_displayconfig()
