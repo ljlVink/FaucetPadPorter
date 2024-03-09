@@ -528,6 +528,8 @@ func stage11_unlock_freeform_settings() {
 	apk.Execpath = Execpath
 	apk.Need_api_29 = true
 	apkengine.PatchApk_Return_number(apk, "com.android.server.wm.MiuiFreeFormStackDisplayStrategy", "getMaxMiuiFreeFormStackCount", 256)
+	apkengine.PatchApk_Return_Boolean(apk, "com.android.server.wm.WindowManagerServiceImpl", "notAllowCaptureDisplay", false)
+
 	apkengine.RepackApk(apk)
 }
 func stage12_settings_unlock_content_extension() {
@@ -560,8 +562,6 @@ func stage13_patch_systemUI() {
 	apk.Execpath = Execpath
 	apkengine.Add_method_after(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", filepath.Join(Execpath, "res", "systemUI_patch1.txt"))
 	apkengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuimultiwinswitch.miuiwindowdecor.MiuiDotView", "onDraw", filepath.Join(Execpath, "res", "systemUI_patch2.txt"), false)
-	apkengine.Add_method_after(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", filepath.Join(Execpath, "res", "systemUI_patch4.txt"))
-	apkengine.Patch_before_funcstart(apk, "com.android.wm.shell.miuifreeform.MiuiInfinityModeTaskRepository", "findTopDraggableFullscreenTaskInfo", filepath.Join(Execpath, "res", "systemUI_patch3.txt"), true)
 	apkengine.Add_method_after(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", filepath.Join(Execpath, "res", "systemUI_patch5.txt"))
 	apkengine.Patch_before_funcstart(apk, "com.android.systemui.navigationbar.gestural.NavigationHandle", "onDraw", filepath.Join(Execpath, "res", "systemUI_patch6.txt"), false)
 	apkengine.RepackApk(apk)
@@ -608,9 +608,11 @@ func stage14_fix_content_extension() {
 	checkerr(err)
 	utils.CopyFile(filepath.Join(Execpath, "res", "MIUIContentExtension.apk"), filepath.Join(Tmppath, "port_images", "product", "priv-app", "MIUIContentExtension", "MIUIContentExtension.apk"))
 }
-func stage15_downgrade_privapp_verification() {
+func stage15_patch_services() {
 	defer Wg.Done()
-	fmt.Println("stage 15:downgrade priv-app verification")
+	fmt.Println("stage 15:patch services")
+
+	fmt.Println("1.downgrade priv-app verification")
 	var apk apkengine.Apkfile
 	apk.Apkpath = filepath.Join(Tmppath, "port_images", "system", "system", "framework", "services.jar")
 	apk.Pkgname = "services"
@@ -639,6 +641,9 @@ func stage15_downgrade_privapp_verification() {
 	checkerr(err)
 	err = utils.ReplaceStringInFile(ApexManager, "Landroid/util/apk/ApkSignatureVerifier;->getMinimumSignatureSchemeVersionForTargetSdk", "Lcom/android/signkill;->getMinimumSignatureSchemeVersionForTargetSdk")
 	checkerr(err)
+
+	fmt.Println("2.disable securelock")
+	apkengine.PatchApk_Return_Boolean(apk, "com.android.server.wm.WindowState", "isSecureLocked", false)
 	apkengine.RepackApk(apk)
 }
 func stage16_patch_desktop() {
@@ -653,8 +658,6 @@ func stage16_patch_desktop() {
 	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.DeviceConfig", "checkIsRecentsTaskSupportBlurV2", true)
 	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.launcher.common.BlurUtils", "isUseCompleteBlurOnDev", true)
 	apkengine.PatchApk_Return_Boolean(apk, "com.miui.home.recents.DimLayer", "isSupportDim", true)
-	apkengine.Add_method_after(apk, "com.miui.home.recents.GestureInputHelper", filepath.Join(Execpath, "res", "MiuiHome_patch1.txt"))
-	apkengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureInputHelper", "onTriggerGestureSuccess", filepath.Join(Execpath, "res", "MiuiHome_patch2.txt"), true)
 	apkengine.Add_method_after(apk, "com.miui.home.recents.GestureTouchEventTracker", filepath.Join(Execpath, "res", "MiuiHome_patch3.txt"))
 	apkengine.Patch_before_funcstart(apk, "com.miui.home.recents.GestureTouchEventTracker", "isUseDockFollowGesture", filepath.Join(Execpath, "res", "MiuiHome_patch4.txt"), true)
 	apkengine.RepackApk(apk)
@@ -690,6 +693,7 @@ func stage19_remove_useless_apps() {
 	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIHuanji"))
 	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "data-app", "MIUIVideoPad"))
 	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "app", "Updater"))
+	utils.DeleteDirectory(filepath.Join(Tmppath, "port_images", "product", "app", "MSA"))
 }
 
 func stage20_upgrade_rootfs_usrimg_prop() {
@@ -748,6 +752,15 @@ func stage22_enable_cellular_share() {
 	apk.Force_unpack_res = true
 	apkengine.DecompileApk(apk)
 	apkengine.ModifyRes_bool(apk, filepath.Join("values", "bools.xml"), "config_celluar_shared_support", "true")
+	apkengine.RepackApk(apk)
+}
+func stage23_disable_mrmservice() {
+	defer Wg.Done()
+	var apk apkengine.Apkfile
+	apk.Apkpath = filepath.Join(Tmppath, "port_images", "product", "app", "MiTrustService", "MiTrustService.apk")
+	apk.Pkgname = "MiTrustService"
+	apk.Execpath = Execpath
+	apkengine.PatchApk_Return_Boolean(apk, "com.xiaomi.trustservice.remoteservice.eventhandle.statusEventHandle", "initIMrmService", false)
 	apkengine.RepackApk(apk)
 }
 
@@ -870,7 +883,7 @@ func main() {
 			Wg.Wait()
 
 		} else {
-			Wg.Add(18)
+			Wg.Add(19)
 			go stage4_modify_prop_config()
 			go stage5_modify_overlay_config()
 			go stage6_modify_displayconfig()
@@ -882,13 +895,14 @@ func main() {
 			go stage12_settings_unlock_content_extension()
 			go stage13_patch_systemUI()
 			go stage14_fix_content_extension()
-			go stage15_downgrade_privapp_verification()
+			go stage15_patch_services()
 			go stage16_patch_desktop()
 			go stage17_copy_custsettings()
 			go stage18_powerkeeper_maxfps()
 			go stage19_remove_useless_apps()
 			go stage20_upgrade_rootfs_usrimg_prop()
 			go stage21_lowram_device_dkt()
+			go stage23_disable_mrmservice()
 			Wg.Wait()
 		}
 		current_stage = 99
